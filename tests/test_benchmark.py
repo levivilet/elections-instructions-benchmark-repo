@@ -5,13 +5,14 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts'))
 from benchmark import (CLIPBOARD_SENTINEL_PREFIX, DOUBLE_CLICK_DELAY_MS, FIXTURE_CONTENT,
                        PROTOCOL, RESPONSE_WINDOW_SECONDS, SELECTION_TEXT, command_for,
-                       double_click_command, is_main_window, selection_evidence_is_valid,
+                       double_click_command, focus_click_coordinates, is_main_window,
+                       clipboard_after_copy, selection_coordinates, selection_evidence_is_valid,
                        zed_post_open_settle_seconds)
 from counters import Capture, parse_counter
 import report
@@ -26,10 +27,12 @@ def trial(count=100):
                 selectionText=SELECTION_TEXT, selection=SELECTION_TEXT,
                 clipboardSentinel=sentinel, clipboardBefore=sentinel,
                 clipboardAfter=SELECTION_TEXT,
+                selectionCoordinates=[500, 400], focusClickCoordinates=[580, 400],
+                doubleClickDelayMilliseconds=DOUBLE_CLICK_DELAY_MS,
                 documentContentSha256='b' * 64,
                 fixtureContentSha256='b' * 64, fixtureUnchanged=True,
                 focusPid=12, pidsAtInput=[12, 14], readiness={'windowId': '1'},
-                cutoffAcknowledged=True, doubleClickDelayMilliseconds=DOUBLE_CLICK_DELAY_MS,
+                cutoffAcknowledged=True,
                 rawCounter=f'{count};;instructions;selection-test;1234;100.00;;\n')
 
 
@@ -52,6 +55,11 @@ class BenchmarkTest(unittest.TestCase):
         self.assertEqual(PROTOCOL['action'], 'one X11 double-click selecting a word in a prepared plain-text document')
         self.assertEqual(PROTOCOL['responseWindowSeconds'], RESPONSE_WINDOW_SECONDS)
         self.assertIn('pointer positioning', PROTOCOL['excluded'])
+        for editor in report.EDITORS:
+            x, y = selection_coordinates(editor['id'])
+            focus_x, focus_y = focus_click_coordinates(editor['id'])
+            self.assertEqual(y, focus_y)
+            self.assertGreater(abs(x - focus_x), 5)
 
     def test_codemirror_and_other_electron_editors_use_bundled_apps(self):
         expected = {
@@ -87,6 +95,12 @@ class BenchmarkTest(unittest.TestCase):
             broken = dict(evidence, **changes)
             with self.subTest(changes=changes):
                 self.assertFalse(selection_evidence_is_valid(broken))
+
+    def test_clipboard_copy_waits_for_the_new_selection(self):
+        with patch('benchmark.subprocess.check_output', side_effect=['stale', SELECTION_TEXT]) as read_clipboard, \
+                patch('benchmark.time.sleep'):
+            self.assertEqual(clipboard_after_copy('stale'), SELECTION_TEXT)
+        self.assertEqual(read_clipboard.call_count, 2)
 
     def test_main_window_type_defaults_and_rejections(self):
         mapped = 'WM_STATE(WM_STATE):\n    window state: Normal\n'

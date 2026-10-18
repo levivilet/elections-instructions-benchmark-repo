@@ -18,6 +18,8 @@ CLIPBOARD_SENTINEL_PREFIX = 'selection-benchmark-stale-'
 FIXTURE_LINE = ' '.join([SELECTION_TEXT] * 120)
 FIXTURE_CONTENT = (FIXTURE_LINE + '\n') * 60
 DOUBLE_CLICK_DELAY_MS = 100
+FOCUS_CLICK_OFFSET_X = 80
+CLIPBOARD_UPDATE_TIMEOUT_SECONDS = 2.0
 RESPONSE_WINDOW_SECONDS = 1.0
 DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS = 10.0
 MAX_ZED_POST_OPEN_SETTLE_SECONDS = 30.0
@@ -67,6 +69,28 @@ def command_for(editor, home, fixture):
 def double_click_command():
     return ['xdotool', 'click', '--clearmodifiers', '--repeat', '2',
             '--delay', str(DOUBLE_CLICK_DELAY_MS), '1']
+
+
+def selection_coordinates(editor_id):
+    positions = {'basic-electron': (200, 160), 'codemirror6': (200, 160),
+                 'codemirror5': (200, 160), 'ace': (200, 160), 'lapce': (500, 150),
+                 'zed': (800, 135)}
+    return positions.get(editor_id, (500, 400))
+
+
+def focus_click_coordinates(editor_id):
+    x, y = selection_coordinates(editor_id)
+    return x + FOCUS_CLICK_OFFSET_X, y
+
+
+def clipboard_after_copy(previous, timeout=CLIPBOARD_UPDATE_TIMEOUT_SECONDS):
+    deadline = time.monotonic() + timeout
+    while True:
+        copied = subprocess.check_output(['xclip', '-selection', 'clipboard', '-o'],
+                                         text=True, timeout=1)
+        if copied != previous or time.monotonic() >= deadline:
+            return copied
+        time.sleep(.02)
 
 
 def selection_evidence_is_valid(trial):
@@ -180,12 +204,13 @@ def trial(editor, perf, zed_settle_seconds=DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS,
                         title = subprocess.check_output(['xdotool', 'getwindowname', window_id], text=True).strip()
                         if fixture.name not in title:
                             raise RuntimeError(f'Zed did not open fixture {fixture.name}: {title!r}')
-                    positions = {'basic-electron': ('200', '160'), 'codemirror6': ('200', '160'),
-                                 'codemirror5': ('200', '160'), 'ace': ('200', '160'), 'lapce': ('500', '150'),
-                                 'zed': ('800', '135')}
-                    x, y = positions.get(editor['id'], ('500', '400'))
-                    subprocess.run(['xdotool', 'mousemove', '--window', window_id, x, y], check=True)
+                    x, y = selection_coordinates(editor['id'])
+                    focus_x, focus_y = focus_click_coordinates(editor['id'])
+                    subprocess.run(['xdotool', 'mousemove', '--window', window_id,
+                                    str(focus_x), str(focus_y)], check=True)
                     subprocess.run(['xdotool', 'click', '1'], check=True)
+                    subprocess.run(['xdotool', 'mousemove', '--window', window_id,
+                                    str(x), str(y)], check=True)
                     focused_window = subprocess.check_output(['xdotool', 'getwindowfocus'], text=True).strip()
                     focused_pid = int(subprocess.check_output(['xdotool', 'getwindowpid', focused_window], text=True).strip())
                     pids = capture.pids()
@@ -241,14 +266,12 @@ def trial(editor, perf, zed_settle_seconds=DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS,
                                    stage='verify-selection')
                     if not idle:
                         subprocess.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+c'], check=True)
-                        copied = subprocess.check_output(['xclip', '-selection', 'clipboard', '-o'],
-                                                         text=True, timeout=5)
+                        copied = clipboard_after_copy(clipboard_sentinel)
                         if copied != SELECTION_TEXT or copied == clipboard_sentinel:
                             raise RuntimeError(f'selection mismatch: expected {SELECTION_TEXT!r}, got {copied!r}')
                         subprocess.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+a'], check=True)
                         subprocess.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+c'], check=True)
-                        document_after = subprocess.check_output(
-                            ['xclip', '-selection', 'clipboard', '-o'], text=True, timeout=5)
+                        document_after = clipboard_after_copy(SELECTION_TEXT)
                         if document_after != FIXTURE_CONTENT:
                             raise RuntimeError('editor document contents changed after selection')
                     else:
@@ -263,6 +286,8 @@ def trial(editor, perf, zed_settle_seconds=DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS,
                     result.update(selection=None if idle else copied,
                                   clipboardAfter=None if idle else copied,
                                   clipboardSentinel=clipboard_sentinel,
+                                  focusClickCoordinates=[focus_x, focus_y],
+                                  selectionCoordinates=[x, y],
                                   documentContentSha256=hashlib.sha256(document_after.encode()).hexdigest(),
                                   fixtureContentSha256=content_digest_after,
                                   fixtureUnchanged=contents_after == FIXTURE_CONTENT)
