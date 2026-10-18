@@ -1,0 +1,15 @@
+{
+  "name": "typing-instructions-benchmark-codemirror5-electron",
+  "private": true,
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "build": "esbuild renderer.js --bundle --format=iife --outfile=renderer.bundle.js"
+  },
+  "dependencies": {
+    "codemirror": "5.65.21"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
