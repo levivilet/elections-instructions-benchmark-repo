@@ -15,9 +15,9 @@ Incomplete matrices and invalid selections are never published.
 - Linux ARM64, Ubuntu 24.04 ARM, X11/Xvfb, one editor per runner. The matrix is
   LVCE Editor, VS Code, Zed, Lapce, Geany, Basic Electron, CodeMirror 6,
   CodeMirror 5, and Ace in Electron.
-- Each trial opens a fresh text fixture using a fresh HOME and XDG profile. The
-  fixture contains repeated instances of the unique word `selectiontarget` so
-  every supported editor has text beneath the measured pointer coordinates.
+- Each trial opens a fresh text fixture using a fresh HOME and XDG profile. Its
+  short rows repeat the unique word `selectiontarget` so every supported editor
+  has text beneath the measured pointer coordinates without soft-wrapped lines.
   Startup and settling happen with counters disabled.
 - The external input driver activates the editor window, positions the pointer,
   verifies focus belongs to the editor cgroup, and installs a unique clipboard

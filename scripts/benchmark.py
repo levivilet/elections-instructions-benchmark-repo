@@ -15,7 +15,8 @@ from counters import Capture
 ROOT = Path(__file__).resolve().parent.parent
 SELECTION_TEXT = 'selectiontarget'
 CLIPBOARD_SENTINEL_PREFIX = 'selection-benchmark-stale-'
-FIXTURE_LINE = ' '.join([SELECTION_TEXT] * 120)
+FIXTURE_WORDS_PER_LINE = 8
+FIXTURE_LINE = ' '.join([SELECTION_TEXT] * FIXTURE_WORDS_PER_LINE)
 FIXTURE_CONTENT = (FIXTURE_LINE + '\n') * 60
 DOUBLE_CLICK_DELAY_MS = 100
 FOCUS_CLICK_OFFSET_X = 80
@@ -206,6 +207,8 @@ def trial(editor, perf, zed_settle_seconds=DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS,
                             raise RuntimeError(f'Zed did not open fixture {fixture.name}: {title!r}')
                     x, y = selection_coordinates(editor['id'])
                     focus_x, focus_y = focus_click_coordinates(editor['id'])
+                    details.update(selectionCoordinates=[x, y], focusClickCoordinates=[focus_x, focus_y],
+                                   targetText=SELECTION_TEXT, stage='focus-input')
                     subprocess.run(['xdotool', 'mousemove', '--window', window_id,
                                     str(focus_x), str(focus_y)], check=True)
                     subprocess.run(['xdotool', 'click', '1'], check=True)

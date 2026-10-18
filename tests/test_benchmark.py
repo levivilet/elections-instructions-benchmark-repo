@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts'))
 from benchmark import (CLIPBOARD_SENTINEL_PREFIX, DOUBLE_CLICK_DELAY_MS, FIXTURE_CONTENT,
+                       FIXTURE_LINE, FIXTURE_WORDS_PER_LINE,
                        PROTOCOL, RESPONSE_WINDOW_SECONDS, SELECTION_TEXT, command_for,
                        double_click_command, focus_click_coordinates, is_main_window,
                        clipboard_after_copy, selection_coordinates, selection_evidence_is_valid,
@@ -48,7 +49,9 @@ class BenchmarkTest(unittest.TestCase):
 
     def test_editor_fixture_and_double_click_are_explicit(self):
         self.assertIn(SELECTION_TEXT, FIXTURE_CONTENT)
-        self.assertGreater(FIXTURE_CONTENT.count(SELECTION_TEXT), 1000)
+        self.assertEqual(FIXTURE_LINE.count(SELECTION_TEXT), FIXTURE_WORDS_PER_LINE)
+        self.assertLess(len(FIXTURE_LINE), 160)
+        self.assertGreater(FIXTURE_CONTENT.count(SELECTION_TEXT), 100)
         self.assertEqual(double_click_command(), [
             'xdotool', 'click', '--clearmodifiers', '--repeat', '2',
             '--delay', str(DOUBLE_CLICK_DELAY_MS), '1'])
