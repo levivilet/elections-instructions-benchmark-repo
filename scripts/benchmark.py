@@ -72,6 +72,7 @@ def double_click_command():
 def selection_evidence_is_valid(trial):
     sentinel = trial.get('clipboardSentinel')
     fixture_digest = trial.get('fixtureContentSha256')
+    document_digest = trial.get('documentContentSha256')
     return (trial.get('selection') == SELECTION_TEXT
             and trial.get('selectionText') == SELECTION_TEXT
             and isinstance(sentinel, str)
@@ -81,7 +82,8 @@ def selection_evidence_is_valid(trial):
             and trial.get('clipboardAfter') != sentinel
             and trial.get('fixtureUnchanged') is True
             and isinstance(fixture_digest, str)
-            and re.fullmatch(r'[0-9a-f]{64}', fixture_digest))
+            and re.fullmatch(r'[0-9a-f]{64}', fixture_digest)
+            and document_digest == fixture_digest)
 
 
 def zed_post_open_settle_seconds(value):
@@ -261,6 +263,7 @@ def trial(editor, perf, zed_settle_seconds=DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS,
                     result.update(selection=None if idle else copied,
                                   clipboardAfter=None if idle else copied,
                                   clipboardSentinel=clipboard_sentinel,
+                                  documentContentSha256=hashlib.sha256(document_after.encode()).hexdigest(),
                                   fixtureContentSha256=content_digest_after,
                                   fixtureUnchanged=contents_after == FIXTURE_CONTENT)
             child.wait(timeout=5)

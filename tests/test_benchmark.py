@@ -26,6 +26,7 @@ def trial(count=100):
                 selectionText=SELECTION_TEXT, selection=SELECTION_TEXT,
                 clipboardSentinel=sentinel, clipboardBefore=sentinel,
                 clipboardAfter=SELECTION_TEXT,
+                documentContentSha256='b' * 64,
                 fixtureContentSha256='b' * 64, fixtureUnchanged=True,
                 focusPid=12, pidsAtInput=[12, 14], readiness={'windowId': '1'},
                 cutoffAcknowledged=True, doubleClickDelayMilliseconds=DOUBLE_CLICK_DELAY_MS,
@@ -81,7 +82,8 @@ class BenchmarkTest(unittest.TestCase):
         self.assertTrue(selection_evidence_is_valid(evidence))
         for changes in [dict(selection='selection'), dict(clipboardAfter='old clipboard'),
                         dict(clipboardBefore='selectiontarget'), dict(clipboardSentinel='selectiontarget'),
-                        dict(fixtureUnchanged=False), dict(fixtureContentSha256='short')]:
+                        dict(fixtureUnchanged=False), dict(fixtureContentSha256='short'),
+                        dict(documentContentSha256='c' * 64)]:
             broken = dict(evidence, **changes)
             with self.subTest(changes=changes):
                 self.assertFalse(selection_evidence_is_valid(broken))

@@ -146,6 +146,7 @@ def build_report(results: list[dict], output: Path, run_url: str, commit: str) -
                         "selection": trial["selection"],
                         "clipboardBefore": trial["clipboardBefore"],
                         "clipboardAfter": trial["clipboardAfter"],
+                        "documentContentSha256": trial["documentContentSha256"],
                         "fixtureContentSha256": trial["fixtureContentSha256"],
                         "fixtureUnchanged": trial["fixtureUnchanged"],
                         "source": trial["source"]} for trial in trials],
