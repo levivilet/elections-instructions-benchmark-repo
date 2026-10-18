@@ -63,6 +63,7 @@ class BenchmarkTest(unittest.TestCase):
             focus_x, focus_y = focus_click_coordinates(editor['id'])
             self.assertEqual(y, focus_y)
             self.assertGreater(abs(x - focus_x), 5)
+        self.assertEqual(selection_coordinates('lvce'), (100, 400))
 
     def test_codemirror_and_other_electron_editors_use_bundled_apps(self):
         expected = {

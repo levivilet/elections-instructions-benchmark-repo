@@ -73,7 +73,7 @@ def double_click_command():
 
 
 def selection_coordinates(editor_id):
-    positions = {'basic-electron': (200, 160), 'codemirror6': (200, 160),
+    positions = {'lvce': (100, 400), 'basic-electron': (200, 160), 'codemirror6': (200, 160),
                  'codemirror5': (200, 160), 'ace': (200, 160), 'lapce': (500, 150),
                  'zed': (800, 135)}
     return positions.get(editor_id, (500, 400))
