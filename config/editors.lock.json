@@ -1,0 +1,87 @@
+[
+  {
+    "id": "lvce",
+    "name": "LVCE Editor",
+    "version": "v0.123.21",
+    "archive": "lvce-v0.123.21_arm64.deb",
+    "url": "https://github.com/lvce-editor/lvce-editor/releases/download/v0.123.21/lvce-v0.123.21_arm64.deb",
+    "sha256": "9ba53bf6a8222871775c3b01910bf27afd73e59f09c379dd7144323162d3474b",
+    "binary": "usr/lib/lvce/lvce"
+  },
+  {
+    "id": "vscode",
+    "name": "VS Code",
+    "version": "1.142.0",
+    "archive": "vscode-1.142.0-arm64.tar.gz",
+    "url": "https://vscode.download.prss.microsoft.com/dbazure/download/stable/6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1/code-stable-arm64-1792034875.tar.gz",
+    "sha256": "cb4ce5183a29b1a13aeb6409d5430c896fa35aad21097be1f874fbb4cf1e7e62",
+    "binary": "VSCode-linux-arm64/code"
+  },
+  {
+    "id": "zed",
+    "name": "Zed",
+    "version": "v1.24.2",
+    "archive": "zed-v1.24.2-linux-aarch64.tar.gz",
+    "url": "https://github.com/zed-industries/zed/releases/download/v1.24.2/zed-linux-aarch64.tar.gz",
+    "sha256": "96a54806a7e286452078bdfc94b63c7bf6b8324ffcb16c5c60ff1fd96743ea45",
+    "binary": "zed.app/libexec/zed-editor"
+  },
+  {
+    "id": "lapce",
+    "name": "Lapce",
+    "version": "v0.4.6",
+    "archive": "lapce-linux-arm64.tar.gz",
+    "url": "https://github.com/lapce/lapce/releases/download/v0.4.6/lapce-linux-arm64.tar.gz",
+    "sha256": "7a249eb41bc9f8ddbd94abb51ccdc1d233e33927e6eb9c63e103ea1d9c1530ec",
+    "binary": "Lapce/lapce"
+  },
+  {
+    "id": "codemirror6",
+    "name": "CodeMirror 6 (Electron)",
+    "version": "CodeMirror 6.7.6 / 6.43.14 (minimal state + view; no language extensions; Electron v44.9.0)",
+    "archive": "electron-v44.9.0-linux-arm64.zip",
+    "url": "https://github.com/electron/electron/releases/download/v44.9.0/electron-v44.9.0-linux-arm64.zip",
+    "sha256": "37fe4dfc34a6dd35d65816864cc6ba9484565cda5ad6d29022e0ee3969e0ea15",
+    "binary": "electron",
+    "app": "codemirror-electron"
+  },
+  {
+    "id": "basic-electron",
+    "name": "Basic Electron",
+    "version": "v44.9.0",
+    "archive": "electron-v44.9.0-linux-arm64.zip",
+    "url": "https://github.com/electron/electron/releases/download/v44.9.0/electron-v44.9.0-linux-arm64.zip",
+    "sha256": "37fe4dfc34a6dd35d65816864cc6ba9484565cda5ad6d29022e0ee3969e0ea15",
+    "binary": "electron",
+    "app": "basic-electron"
+  },
+  {
+    "id": "geany",
+    "name": "Geany",
+    "version": "Ubuntu 24.04 package 2.0-1build2",
+    "binary": "geany",
+    "package": "geany"
+  },
+  {
+    "id": "codemirror5",
+    "name": "CodeMirror 5 (Electron)",
+    "version": "CodeMirror 5.65.21 / Electron v44.9.0",
+    "archive": "electron-v44.9.0-linux-arm64.zip",
+    "url": "https://github.com/electron/electron/releases/download/v44.9.0/electron-v44.9.0-linux-arm64.zip",
+    "sha256": "37fe4dfc34a6dd35d65816864cc6ba9484565cda5ad6d29022e0ee3969e0ea15",
+    "binary": "electron",
+    "app": "codemirror5-electron",
+    "configuration": "CodeMirror 5.65.21; plain text mode, no line numbers or extensions; Electron v44.9.0"
+  },
+  {
+    "id": "ace",
+    "name": "Ace (Electron)",
+    "version": "Ace 1.45.0 (plain text; workers disabled) / Electron v44.9.0",
+    "archive": "electron-v44.9.0-linux-arm64.zip",
+    "url": "https://github.com/electron/electron/releases/download/v44.9.0/electron-v44.9.0-linux-arm64.zip",
+    "sha256": "37fe4dfc34a6dd35d65816864cc6ba9484565cda5ad6d29022e0ee3969e0ea15",
+    "binary": "electron",
+    "app": "ace-electron",
+    "configuration": "Ace 1.45.0; plain text mode, TextMate theme, no gutter or workers; Electron v44.9.0"
+  }
+]

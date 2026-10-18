@@ -1,0 +1,5 @@
+results/
+.tmp/
+__pycache__/
+codemirror-electron/node_modules/
+codemirror-electron/renderer.bundle.js

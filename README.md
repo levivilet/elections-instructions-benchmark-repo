@@ -1,2 +1,72 @@
-# elections-instructions-benchmark-repo
-Compare CPU instructions required for editors to select text
+# Selection instructions benchmark
+
+Compare retired CPU instructions executed while an editor selects a word after a
+real double-click on Linux ARM64. The chart reports each editor's median from
+three fresh-profile trials, ordered from fewest instructions to most.
+
+The latest complete run is published at
+[GitHub Pages](https://levivilet.github.io/elections-instructions-benchmark-repo/).
+Each result includes the raw hardware counter, exact trial boundaries, host
+metadata, clipboard evidence, and a digest proving the document stayed intact.
+Incomplete matrices and invalid selections are never published.
+
+## Measurement protocol
+
+- Linux ARM64, Ubuntu 24.04 ARM, X11/Xvfb, one editor per runner. The matrix is
+  LVCE Editor, VS Code, Zed, Lapce, Geany, Basic Electron, CodeMirror 6,
+  CodeMirror 5, and Ace in Electron.
+- Each trial opens a fresh text fixture using a fresh HOME and XDG profile. Its
+  short rows repeat the unique word `selectiontarget` so every supported editor
+  has text beneath the measured pointer coordinates without soft-wrapped lines.
+  Startup and settling happen with counters disabled.
+- The external input driver activates the editor window, positions the pointer,
+  verifies focus belongs to the editor cgroup, and installs a unique clipboard
+  sentinel. Before counting, it confirms the sentinel is the current clipboard.
+- `perf stat` counts retired user and kernel instructions for the editor's
+  cgroup. Counting begins immediately before an X11 double-click (two clicks
+  100 ms apart) and ends after a fixed one-second response window. The editor
+  and its descendants are included. Background work during that window is
+  included.
+- Launch, fixture setup, pointer positioning, focus setup, sentinel setup, the
+  external input driver, selection/document verification, cleanup, the desktop,
+  and the X server are outside the counted cgroup. Counter control latency
+  through acknowledgement is included.
+- After counter cutoff, the harness copies the selection and requires exactly
+  `selectiontarget`; stale clipboard content, a partial selection, wrong text,
+  focus loss, unsupported or multiplexed counters, or an incomplete editor
+  matrix invalidates the trial. It then copies the whole document and verifies
+  its exact contents, and checks the fixture bytes remain unchanged.
+- Three trials per editor use fresh application profiles. The chart compares
+  median instruction counts. OS filesystem caches may be warm.
+- Editor downloads are pinned by version and SHA-256 in
+  `config/editors.lock.json`. Raw JSON retains counts, timings, host and protocol
+  metadata, counter output, exact selection evidence, and document integrity.
+- The CodeMirror 6, CodeMirror 5, and Ace comparisons use pinned minimal text
+  editors without language services; their versions and configurations are
+  recorded with each benchmark result.
+
+The one-second response window measures the double-click and immediate editor
+work while disclosing background work included during that interval.
+
+## Run locally
+
+The same ARM64 hardware-counter access and pinned editor packages used by CI
+are required. On an Ubuntu ARM64 runner with `perf` and the desktop dependencies
+installed:
+
+```sh
+python3 scripts/install.py
+python3 -m unittest discover -s tests
+sudo sysctl kernel.perf_event_paranoid=-1
+PERF=$(find -L /usr/lib/linux-tools -name perf -type f | sort | tail -n 1)
+xvfb-run -a -s '-screen 0 1280x800x24' bash scripts/run.sh lvce "$PERF"
+```
+
+Use `python3 scripts/benchmark.py --help` to see trial options.
+
+## CI
+
+Every pull request runs hardware-accounting acceptance, all nine editor trials,
+and the complete-report regression checks on the ARM runner matrix. Main pushes,
+scheduled runs, and manual runs publish three trials per editor and deploy the
+validated report to GitHub Pages. CI does not publish a partial matrix.

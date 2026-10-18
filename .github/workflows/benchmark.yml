@@ -1,0 +1,118 @@
+name: Selection instructions benchmark
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      zed_post_open_settle_seconds:
+        description: 'Seconds to settle after Zed opens the fixture (0–30; for readiness experiments)'
+        required: false
+        default: '10'
+  schedule:
+    - cron: '43 5 * * 1'
+permissions:
+  contents: read
+concurrency:
+  group: selection-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  accounting:
+    name: Hardware accounting
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y linux-tools-generic build-essential
+          sudo sysctl kernel.perf_event_paranoid=-1
+          mkdir -p .tmp
+          PERF=$(find -L /usr/lib/linux-tools -name perf -type f | sort | tail -n 1)
+          sudo env LC_ALL=C python3 scripts/validate_accounting.py "$PERF"
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: hardware-accounting
+          path: results/
+          if-no-files-found: error
+  benchmark:
+    name: Selection (${{ matrix.editor }})
+    needs: accounting
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        editor: [lvce, vscode, zed, lapce, geany, basic-electron, codemirror6, codemirror5, ace]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install desktop and perf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y linux-tools-generic python3 curl xz-utils xvfb xauth xdotool x11-utils xclip openbox geany \
+            libgtk-3-0 libnss3 libgbm1 libxss1 libxtst6 libxkbcommon-x11-0 libxkbfile1 libsecret-1-0 \
+            mesa-utils mesa-vulkan-drivers libvulkan1 libasound2t64
+          sudo sysctl kernel.perf_event_paranoid=-1
+      - name: Install pinned ARM artifact
+        run: python3 scripts/install.py --editors "${{ matrix.editor }}"
+      - name: Measure three fresh-profile word selections
+        env:
+          BENCHMARK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BENCHMARK_COMMIT: ${{ github.sha }}
+          BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS: ${{ github.event.inputs.zed_post_open_settle_seconds || '10' }}
+        run: |
+          echo "Zed post-open settling: ${BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS}s"
+          PERF=$(find -L /usr/lib/linux-tools -name perf -type f | sort | tail -n 1)
+          xvfb-run -a -s '-screen 0 1280x800x24' bash scripts/run.sh "${{ matrix.editor }}" "$PERF"
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: selection-${{ matrix.editor }}
+          path: results/
+          if-no-files-found: error
+          retention-days: 90
+  report:
+    name: Tests and complete report
+    if: ${{ !cancelled() }}
+    needs: [accounting, benchmark]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - run: python3 -m unittest discover -s tests
+      - uses: actions/download-artifact@v5
+        if: needs.benchmark.result == 'success'
+        with:
+          pattern: selection-*
+          path: results/editors
+      - name: Build validated report
+        if: needs.benchmark.result == 'success'
+        run: python3 scripts/report.py --run-url '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' --commit '${{ github.sha }}'
+      - uses: actions/upload-artifact@v5
+        if: needs.benchmark.result == 'success'
+        with:
+          name: measured-report
+          path: .tmp/pages
+          if-no-files-found: error
+      - uses: actions/upload-pages-artifact@v4
+        if: needs.benchmark.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          path: .tmp/pages
+      - name: Require full hardware and editor coverage
+        if: needs.accounting.result != 'success' || needs.benchmark.result != 'success'
+        run: exit 1
+  deploy:
+    name: Deploy Pages
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: report
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - uses: actions/deploy-pages@v4
+        id: deployment
