@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
-from wayland import (click, clipboard_after_copy, ctrl, double_click_command,
+from wayland import (clipboard_after_copy, ctrl, double_click_command,
                      focus, focused_window, move_pointer, read_clipboard,
                      set_clipboard, visible_window)
 
@@ -49,6 +49,7 @@ def main():
         view.get_buffer().place_cursor(view.get_buffer().get_start_iter())
         window.connect('destroy', Gtk.main_quit)
         window.show_all()
+        view.grab_focus()
         def report_target():
             rect = view.get_iter_location(view.get_buffer().get_iter_at_offset(6))
             x, y = view.buffer_to_window_coords(Gtk.TextWindowType.WIDGET,
@@ -79,12 +80,10 @@ def main():
         x, y = layout['target']
         focus(window)
         time.sleep(.2)
-        # Keep the focus click away from the measured double-click so GTK
-        # does not interpret the three presses as a line-selecting triple-click.
-        move_pointer(window, x + 80, y)
-        click()
+        # Compositor focus plus the client's initial text focus is sufficient.
+        # Exercise exactly two button presses, without priming GTK's separate
+        # multi-press gesture state with a third focus click.
         move_pointer(window, x, y)
-        time.sleep(.2)
         focused = focused_window([child.pid])
         if not focused:
             raise RuntimeError('test client did not receive focus')
