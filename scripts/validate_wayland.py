@@ -38,8 +38,11 @@ def main():
             time.sleep(.05)
         focus(window)
         time.sleep(.2)
-        move_pointer(window, 200, 160)
+        # Keep the focus click away from the measured double-click so GTK
+        # does not interpret the three presses as a line-selecting triple-click.
+        move_pointer(window, 280, 160)
         click()
+        move_pointer(window, 200, 160)
         time.sleep(.2)
         focused = focused_window([child.pid])
         if not focused:

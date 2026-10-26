@@ -18,8 +18,12 @@ unset DISPLAY WAYLAND_SOCKET DBUS_SESSION_BUS_ADDRESS
 pids=()
 cleanup() {
   trap - EXIT
-  for pid in "${pids[@]}"; do sudo kill "$pid" 2>/dev/null || true; done
-  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+  # Close clients/compositor before the input and seat daemons they depend on.
+  for ((index=${#pids[@]}-1; index>=0; index--)); do
+    pid=${pids[index]}
+    sudo kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  done
   rm -rf "$runtime"
 }
 trap cleanup EXIT
