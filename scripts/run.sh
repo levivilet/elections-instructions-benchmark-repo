@@ -39,14 +39,13 @@ focus_follows_mouse no
 mouse_warping none
 default_border none
 for_window [shell="xdg_shell"] fullscreen enable
-ipc-socket $SWAYSOCK
 EOF
 for attempt in {1..100}; do
   if [ -S /run/seatd.sock ] && [ -S "$YDOTOOL_SOCKET" ]; then break; fi
   sleep .05
 done
 # libinput supplies the uinput device; headless supplies only the output.
-env WLR_BACKENDS=headless,libinput WLR_LIBINPUT_NO_DEVICES=1 WLR_RENDERER=pixman LIBSEAT_BACKEND=seatd \
+env WLR_BACKENDS=headless,libinput WLR_RENDERER=pixman LIBSEAT_BACKEND=seatd \
   sway --config "$runtime/sway.conf" --debug > results/sway.log 2>&1 &
 pids+=("$!")
 ready=false
@@ -61,7 +60,11 @@ for attempt in {1..200}; do
   fi
   sleep .05
 done
-if [ "$ready" != true ]; then cat results/sway.log results/seatd.log results/ydotoold.log; exit 1; fi
+if [ "$ready" != true ]; then
+  swaymsg -r -t get_inputs > results/wayland-inputs.json || true
+  cat results/wayland-inputs.json results/sway.log results/seatd.log results/ydotoold.log
+  exit 1
+fi
 swaymsg -r -t get_inputs > results/wayland-inputs.json
 # Prove client input, focus and clipboard before opening measured editors.
 GDK_BACKEND=wayland python3 scripts/validate_wayland.py
