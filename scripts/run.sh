@@ -1,11 +1,71 @@
 #!/usr/bin/env bash
 set -euo pipefail
-openbox > /tmp/startup-openbox.log 2>&1 &
-desktop_pid=$!
-trap 'kill "$desktop_pid" 2>/dev/null || true' EXIT
-# The desktop is outside the measured editor cgroup and ready before launch.
+# Run on a dedicated host: seatd/uinput are host devices, not nested X11 input.
+# Never take over an existing desktop's seat daemon.
+if [ -S /run/seatd.sock ]; then
+  echo 'An existing seatd owns this host; use a dedicated benchmark runner.' >&2
+  exit 1
+fi
+mkdir -p results
+runtime=$(mktemp -d /tmp/selection-wayland.XXXXXX)
+chmod 700 "$runtime"
+export XDG_RUNTIME_DIR="$runtime"
+export PATH="$PWD/.tmp/ydotool-build:$PATH"
+export YDOTOOL_SOCKET="$runtime/ydotool.sock"
+export SWAYSOCK="$runtime/sway.sock"
+unset WAYLAND_DISPLAY
+unset DISPLAY WAYLAND_SOCKET DBUS_SESSION_BUS_ADDRESS
+pids=()
+cleanup() {
+  trap - EXIT
+  for pid in "${pids[@]}"; do sudo kill "$pid" 2>/dev/null || true; done
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+  rm -rf "$runtime"
+}
+trap cleanup EXIT
+sudo modprobe uinput
+sudo env SEATD_VTBOUND=0 seatd -u "$(id -un)" > results/seatd.log 2>&1 &
+pids+=("$!")
+sudo env -u DISPLAY "$PWD/.tmp/ydotool-build/ydotoold" --socket-path="$YDOTOOL_SOCKET" --socket-own="$(id -u):$(id -g)" > results/ydotoold.log 2>&1 &
+pids+=("$!")
+cat > "$runtime/sway.conf" <<EOF
+xwayland disable
+output HEADLESS-1 mode 1280x800@60Hz scale 1
+seat seat0 fallback true
+input * xkb_layout us
+input type:pointer accel_profile flat
+input type:pointer pointer_accel 0
+focus_follows_mouse no
+mouse_warping none
+default_border none
+for_window [shell="xdg_shell"] fullscreen enable
+ipc-socket $SWAYSOCK
+EOF
 for attempt in {1..100}; do
-  if xprop -root _NET_SUPPORTING_WM_CHECK | grep -q 'window id'; then break; fi
+  if [ -S /run/seatd.sock ] && [ -S "$YDOTOOL_SOCKET" ]; then break; fi
   sleep .05
 done
-sudo --preserve-env=DISPLAY,XAUTHORITY,BENCHMARK_RUN_URL,BENCHMARK_COMMIT,BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS python3 scripts/benchmark.py --editor "$1" --perf "$2" --repeats 3
+# libinput supplies the uinput device; headless supplies only the output.
+env WLR_BACKENDS=headless,libinput WLR_LIBINPUT_NO_DEVICES=1 WLR_RENDERER=pixman LIBSEAT_BACKEND=seatd \
+  sway --config "$runtime/sway.conf" --debug > results/sway.log 2>&1 &
+pids+=("$!")
+ready=false
+for attempt in {1..200}; do
+  for socket in "$runtime"/wayland-*; do
+    if [ -S "$socket" ]; then export WAYLAND_DISPLAY="${socket##*/}"; fi
+  done
+  if [ -S "$SWAYSOCK" ] && [ -n "${WAYLAND_DISPLAY:-}" ] && \
+      swaymsg -r -t get_inputs | python3 -c 'import json,sys; inputs=json.load(sys.stdin); assert {"keyboard","pointer"} <= {i["type"] for i in inputs if i["name"] == "ydotoold virtual device"}'; then
+    ready=true
+    break
+  fi
+  sleep .05
+done
+if [ "$ready" != true ]; then cat results/sway.log results/seatd.log results/ydotoold.log; exit 1; fi
+swaymsg -r -t get_inputs > results/wayland-inputs.json
+# Prove client input, focus and clipboard before opening measured editors.
+GDK_BACKEND=wayland python3 scripts/validate_wayland.py
+if [ "${1:-}" != --validate-input ]; then
+  sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET,BENCHMARK_RUN_URL,BENCHMARK_COMMIT,BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS \
+    python3 scripts/benchmark.py --editor "$1" --perf "$2" --repeats 3
+fi

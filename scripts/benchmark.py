@@ -11,6 +11,9 @@ import tempfile
 import time
 import uuid
 from counters import Capture
+from wayland import (DOUBLE_CLICK_DELAY_MS, click, clipboard_after_copy, ctrl,
+                     double_click_command, focus, focused_window, key,
+                     move_pointer, read_clipboard, set_clipboard, visible_window)
 
 ROOT = Path(__file__).resolve().parent.parent
 SELECTION_TEXT = 'selectiontarget'
@@ -18,23 +21,22 @@ CLIPBOARD_SENTINEL_PREFIX = 'selection-benchmark-stale-'
 FIXTURE_WORDS_PER_LINE = 8
 FIXTURE_LINE = ' '.join([SELECTION_TEXT] * FIXTURE_WORDS_PER_LINE)
 FIXTURE_CONTENT = (FIXTURE_LINE + '\n') * 60
-DOUBLE_CLICK_DELAY_MS = 100
 FOCUS_CLICK_OFFSET_X = 80
 CLIPBOARD_UPDATE_TIMEOUT_SECONDS = 2.0
 RESPONSE_WINDOW_SECONDS = 1.0
 DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS = 10.0
 MAX_ZED_POST_OPEN_SETTLE_SECONDS = 30.0
 PROTOCOL = {
-    'version': 4,
+    'version': 5,
     'metric': 'retired hardware instructions (user and kernel)',
-    'action': 'one X11 double-click selecting a word in a prepared plain-text document',
+    'action': 'one native Wayland double-click via ydotool selecting a word in a prepared plain-text document',
     'boundary': 'acknowledged perf enable immediately before double-click dispatch through acknowledged disable 1.0 seconds after dispatch',
     'responseWindowSeconds': RESPONSE_WINDOW_SECONDS,
     'accounting': 'per-CPU cgroup; includes editor descendants and all work during the response window',
     'excluded': 'launch, fixture setup, pointer positioning, stale-clipboard setup, focus setup, the external input driver, selection verification, and cleanup',
     'profile': 'fresh HOME and XDG directories for every trial',
     'cache': 'warm OS filesystem caches permitted; application profiles always fresh',
-    'launcher': 'editor cgroup contains editor process tree; controller, X server, desktop, and xdotool stay outside',
+    'launcher': 'editor cgroup contains editor process tree; controller, Wayland compositor, seatd, ydotoold, ydotool and clipboard helpers stay outside',
     'cutoff': 'perf disable acknowledgement after fixed response window; control latency through acknowledgement is included',
     'verification': 'after cutoff, copy the selection and require exactly selectiontarget with stale-clipboard protection; require the fixture bytes to remain unchanged',
     'doubleClickDelayMilliseconds': DOUBLE_CLICK_DELAY_MS,
@@ -49,7 +51,7 @@ def command_for(editor, home, fixture):
         return ['geany', '--new-instance', str(fixture)]
     args = []
     if editor_id in {'lvce', 'vscode', 'basic-electron', 'codemirror6', 'codemirror5', 'ace'}:
-        args += ['--no-sandbox', '--disable-gpu', '--ozone-platform=x11']
+        args += ['--no-sandbox', '--disable-gpu', '--ozone-platform=wayland']
     if editor_id in {'lvce', 'vscode', 'zed'}:
         args += ['--user-data-dir', str(home / 'profile')]
     if editor_id == 'vscode':
@@ -67,11 +69,6 @@ def command_for(editor, home, fixture):
     return [binary, *args]
 
 
-def double_click_command():
-    return ['xdotool', 'click', '--clearmodifiers', '--repeat', '2',
-            '--delay', str(DOUBLE_CLICK_DELAY_MS), '1']
-
-
 def selection_coordinates(editor_id):
     positions = {'lvce': (100, 400), 'basic-electron': (200, 160), 'codemirror6': (200, 160),
                  'codemirror5': (200, 160), 'ace': (200, 160), 'lapce': (500, 150),
@@ -82,16 +79,6 @@ def selection_coordinates(editor_id):
 def focus_click_coordinates(editor_id):
     x, y = selection_coordinates(editor_id)
     return x + FOCUS_CLICK_OFFSET_X, y
-
-
-def clipboard_after_copy(previous, timeout=CLIPBOARD_UPDATE_TIMEOUT_SECONDS):
-    deadline = time.monotonic() + timeout
-    while True:
-        copied = subprocess.check_output(['xclip', '-selection', 'clipboard', '-o'],
-                                         text=True, timeout=1)
-        if copied != previous or time.monotonic() >= deadline:
-            return copied
-        time.sleep(.02)
 
 
 def selection_evidence_is_valid(trial):
@@ -121,29 +108,6 @@ def zed_post_open_settle_seconds(value):
     return seconds
 
 
-def is_main_window(properties):
-    lines = properties.splitlines()
-    type_line = next((line for line in lines if line.startswith('_NET_WM_WINDOW_TYPE')), '')
-    transient_line = next((line for line in lines if line.startswith('WM_TRANSIENT_FOR')), '')
-    managed = 'window state: Normal' in properties
-    normal = '_NET_WM_WINDOW_TYPE_NORMAL' in type_line
-    default_normal = (type_line.partition(':')[2].strip() == 'not found.' and
-                      transient_line.partition(':')[2].strip() == 'not found.')
-    return managed and (normal or default_normal)
-
-
-def visible_window(pids):
-    for pid in pids:
-        search = subprocess.run(['xdotool', 'search', '--onlyvisible', '--pid', str(pid)],
-                                capture_output=True, text=True)
-        for window in search.stdout.split():
-            props = subprocess.check_output(['xprop', '-id', window, '_NET_WM_WINDOW_TYPE',
-                                             'WM_NAME', 'WM_CLASS', '_NET_WM_PID', 'WM_TRANSIENT_FOR', 'WM_STATE'], text=True)
-            if is_main_window(props):
-                return {'windowId': window, 'pid': pid, 'properties': props}
-    return None
-
-
 def trial(editor, perf, zed_settle_seconds=DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS, *, idle=False, warm=False, capture_type=Capture):
     with tempfile.TemporaryDirectory(prefix='selection-trial-') as directory:
         d = Path(directory)
@@ -154,12 +118,16 @@ def trial(editor, perf, zed_settle_seconds=DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS,
         fixture_digest = hashlib.sha256(FIXTURE_CONTENT.encode()).hexdigest()
         env = {**os.environ, 'HOME': str(home), 'LC_ALL': 'C', 'LIBGL_ALWAYS_SOFTWARE': '1',
                'GALLIUM_DRIVER': 'llvmpipe', 'ZED_ALLOW_EMULATED_GPU': '1',
-               'ELECTRON_OZONE_PLATFORM_HINT': 'x11'}
-        for key, name in [('XDG_CONFIG_HOME', 'config'), ('XDG_DATA_HOME', 'data'),
+               'ELECTRON_OZONE_PLATFORM_HINT': 'wayland', 'GDK_BACKEND': 'wayland',
+               'WINIT_UNIX_BACKEND': 'wayland', 'QT_QPA_PLATFORM': 'wayland',
+               'WAYLAND_DISPLAY': str(Path(os.environ['XDG_RUNTIME_DIR']) / os.environ['WAYLAND_DISPLAY'])}
+        for env_key, name in [('XDG_CONFIG_HOME', 'config'), ('XDG_DATA_HOME', 'data'),
                           ('XDG_CACHE_HOME', 'cache'), ('XDG_STATE_HOME', 'state'),
                           ('XDG_RUNTIME_DIR', 'runtime')]:
-            env[key] = str(home / name)
+            env[env_key] = str(home / name)
             (home / name).mkdir()
+        for name in ['DISPLAY', 'WAYLAND_SOCKET', 'DBUS_SESSION_BUS_ADDRESS']:
+            env.pop(name, None)
         (home / 'runtime').chmod(0o700)
         if 'SUDO_UID' in env:
             uid, gid = int(env['SUDO_UID']), int(env['SUDO_GID'])
@@ -187,63 +155,60 @@ def trial(editor, perf, zed_settle_seconds=DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS,
                             raise RuntimeError('main window readiness timeout')
                         time.sleep(.02)
                     time.sleep(10)
-                    window_id = window['windowId']
                     details.update(window=window, pids=pids, stage='settle')
                     if editor['id'] in {'codemirror6', 'codemirror5', 'ace'}:
-                        title = subprocess.check_output(['xdotool', 'getwindowname', window_id], text=True).strip()
+                        title = visible_window(capture.pids())['name']
                         name = {'codemirror6': 'CodeMirror 6', 'codemirror5': 'CodeMirror 5',
                                 'ace': 'Ace'}[editor['id']]
                         if title != f"{name} - {fixture.name}":
                             raise RuntimeError(f'{name} did not finish loading fixture {fixture.name}: {title!r}')
-                    subprocess.run(['xdotool', 'windowactivate', '--sync', window_id], check=True)
+                    focus(window)
                     if editor['id'] == 'zed':
-                        subprocess.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+p'], check=True)
-                        subprocess.run(['xdotool', 'type', '--clearmodifiers', '--delay', '0', '--', fixture.name], check=True)
+                        ctrl(25)  # P
+                        subprocess.run(['ydotool', 'type', '--key-delay', '1', fixture.name], check=True)
                         time.sleep(.5)
-                        subprocess.run(['xdotool', 'key', '--clearmodifiers', 'Return'], check=True)
+                        key('28:1', '28:0')
                         time.sleep(zed_settle_seconds)
-                        title = subprocess.check_output(['xdotool', 'getwindowname', window_id], text=True).strip()
+                        title = visible_window(capture.pids())['name']
                         if fixture.name not in title:
                             raise RuntimeError(f'Zed did not open fixture {fixture.name}: {title!r}')
                     x, y = selection_coordinates(editor['id'])
                     focus_x, focus_y = focus_click_coordinates(editor['id'])
                     details.update(selectionCoordinates=[x, y], focusClickCoordinates=[focus_x, focus_y],
                                    targetText=SELECTION_TEXT, stage='focus-input')
-                    subprocess.run(['xdotool', 'mousemove', '--window', window_id,
-                                    str(focus_x), str(focus_y)], check=True)
-                    subprocess.run(['xdotool', 'click', '1'], check=True)
-                    subprocess.run(['xdotool', 'mousemove', '--window', window_id,
-                                    str(x), str(y)], check=True)
-                    focused_window = subprocess.check_output(['xdotool', 'getwindowfocus'], text=True).strip()
-                    focused_pid = int(subprocess.check_output(['xdotool', 'getwindowpid', focused_window], text=True).strip())
+                    move_pointer(window, focus_x, focus_y)
+                    click()
+                    move_pointer(window, x, y)
                     pids = capture.pids()
-                    details.update(focusWindow=focused_window, focusPid=focused_pid, pids=pids, stage='input')
+                    focused = focused_window(pids)
+                    if not focused:
+                        raise RuntimeError('focus is outside native editor cgroup')
+                    focused_window_id, focused_pid = focused['id'], focused['pid']
+                    details.update(focusWindow=focused_window_id, focusPid=focused_pid, pids=pids, stage='input')
                     if focused_pid not in pids:
-                        raise RuntimeError(f'focus is outside editor cgroup: window={focused_window}, pid={focused_pid}')
+                        raise RuntimeError(f'focus is outside editor cgroup: window={focused_window_id}, pid={focused_pid}')
                     time.sleep(.5)
                     if warm:
                         # Diagnostic only: exercise edit work, then restore the fixture.
-                        subprocess.run(['xdotool', 'key', '--clearmodifiers', 'End'], check=True)
-                        subprocess.run(['xdotool', 'key', '--clearmodifiers', 'BackSpace'], check=True)
+                        key('107:1', '107:0')
+                        key('14:1', '14:0')
                         time.sleep(1)
-                        subprocess.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+z'], check=True)
+                        ctrl(44)
                         time.sleep(1)
-                        subprocess.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+s'], check=True)
+                        ctrl(31)
                         time.sleep(1)
                         if fixture.read_text() != FIXTURE_CONTENT:
                             raise RuntimeError('warm-up undo did not restore fixture contents')
                     clipboard_sentinel = CLIPBOARD_SENTINEL_PREFIX + uuid.uuid4().hex
-                    subprocess.run(['xclip', '-selection', 'clipboard', '-i'], input=clipboard_sentinel,
-                                   text=True, check=True)
-                    clipboard_before = subprocess.check_output(
-                        ['xclip', '-selection', 'clipboard', '-o'], text=True, timeout=5)
+                    set_clipboard(clipboard_sentinel)
+                    clipboard_before = read_clipboard()
                     if clipboard_before != clipboard_sentinel:
                         raise RuntimeError('clipboard sentinel was not installed before selection')
                     capture.start()
                     measured_started = time.monotonic()
                     if idle:
                         # Diagnostic only: retain the double-click driver's elapsed time without an event.
-                        subprocess.run(['xdotool', 'sleep', '0.015'], check=True)
+                        time.sleep(.2)
                     else:
                         subprocess.run(double_click_command(), check=True)
                     input_sent = time.monotonic()
@@ -253,10 +218,12 @@ def trial(editor, perf, zed_settle_seconds=DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS,
                     capture.cutoff()
                     result = capture.finish()
                     result.update(valid=True, readiness=window,
+                                  displayBackend='wayland', inputDriver='ydotool',
+                                  focusedNativeWindow=focused,
                                   diagnosticWarmup=warm,
                                   selectionText=None if idle else SELECTION_TEXT,
                                   doubleClickDelayMilliseconds=DOUBLE_CLICK_DELAY_MS,
-                                  clipboardBefore=clipboard_before, focusWindow=focused_window,
+                                  clipboardBefore=clipboard_before, focusWindow=focused_window_id,
                                   focusPid=focused_pid, pidsAtInput=pids,
                                   inputDispatchSeconds=input_sent-measured_started,
                                   inputToCutoffSeconds=capture.disabled_at-input_sent,
@@ -268,12 +235,12 @@ def trial(editor, perf, zed_settle_seconds=DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS,
                                     ('instructions', 'measurementSeconds', 'inputDispatchSeconds', 'inputToCutoffSeconds')},
                                    stage='verify-selection')
                     if not idle:
-                        subprocess.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+c'], check=True)
+                        ctrl(46)
                         copied = clipboard_after_copy(clipboard_sentinel)
                         if copied != SELECTION_TEXT or copied == clipboard_sentinel:
                             raise RuntimeError(f'selection mismatch: expected {SELECTION_TEXT!r}, got {copied!r}')
-                        subprocess.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+a'], check=True)
-                        subprocess.run(['xdotool', 'key', '--clearmodifiers', 'ctrl+c'], check=True)
+                        ctrl(30)
+                        ctrl(46)
                         document_after = clipboard_after_copy(SELECTION_TEXT)
                         if document_after != FIXTURE_CONTENT:
                             raise RuntimeError('editor document contents changed after selection')
@@ -318,6 +285,9 @@ def main():
             'paranoid': Path('/proc/sys/kernel/perf_event_paranoid').read_text().strip(),
             'editorUid': int(os.environ.get('SUDO_UID', os.getuid())),
             'runUrl': os.environ.get('BENCHMARK_RUN_URL'), 'commit': os.environ.get('BENCHMARK_COMMIT')}
+    host['desktop'] = {'compositor': subprocess.check_output(['sway', '--version'], text=True).strip(),
+                       'inputDriver': 'ydotool 1.0.4', 'xwayland': False,
+                       'inputs': json.loads(Path('results/wayland-inputs.json').read_text())}
     if host['machine'] != 'aarch64':
         raise SystemExit('requires Linux ARM64')
     if editor.get('package'):

@@ -64,7 +64,7 @@ class Capture:
             raise RuntimeError('perf exited before cutoff')
 
     def launch(self, command, environment, stdout, stderr, cwd=None):
-        # Only the launcher child enters the cgroup; controller, X server,
+        # Only the launcher child enters the cgroup; controller, Wayland compositor and input daemons,
         # desktop, readiness polling and perf remain outside it.
         def enter_group():
             (self.group / 'cgroup.procs').write_text(str(os.getpid()))

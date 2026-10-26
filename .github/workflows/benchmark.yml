@@ -50,10 +50,12 @@ jobs:
       - name: Install desktop and perf
         run: |
           sudo apt-get update
-          sudo apt-get install -y linux-tools-generic python3 curl xz-utils xvfb xauth xdotool x11-utils xclip openbox geany \
+          sudo apt-get install -y linux-tools-generic python3 curl xz-utils sway seatd wl-clipboard geany build-essential cmake scdoc python3-gi gir1.2-gtk-3.0 \
             libgtk-3-0 libnss3 libgbm1 libxss1 libxtst6 libxkbcommon-x11-0 libxkbfile1 libsecret-1-0 \
             mesa-utils mesa-vulkan-drivers libvulkan1 libasound2t64
           sudo sysctl kernel.perf_event_paranoid=-1
+          sudo systemctl stop seatd || true
+          bash scripts/install-input.sh
       - name: Install pinned ARM artifact
         run: python3 scripts/install.py --editors "${{ matrix.editor }}"
       - name: Measure three fresh-profile word selections
@@ -64,7 +66,7 @@ jobs:
         run: |
           echo "Zed post-open settling: ${BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS}s"
           PERF=$(find -L /usr/lib/linux-tools -name perf -type f | sort | tail -n 1)
-          xvfb-run -a -s '-screen 0 1280x800x24' bash scripts/run.sh "${{ matrix.editor }}" "$PERF"
+          bash scripts/run.sh "${{ matrix.editor }}" "$PERF"
       - uses: actions/upload-artifact@v5
         if: always()
         with:
