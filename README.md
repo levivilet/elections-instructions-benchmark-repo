@@ -73,6 +73,8 @@ CLI. Sway combines headless output with a libinput seat supplied by seatd
 virtual keyboard and pointer to appear in compositor IPC and a native GTK
 client to receive the double-click, copy the exact word, and copy its intact
 document. Its evidence and desktop logs are uploaded with every editor result.
+Pointer setup uses acknowledged compositor pixel coordinates; ydotool injects
+all button and keyboard events. Setup remains outside the measurement window.
 Each editor must expose an `xdg_shell` window and focused PID in its cgroup.
 Fresh per-trial runtime directories connect to the shared compositor socket
 explicitly, while all application HOME/XDG state remains isolated.

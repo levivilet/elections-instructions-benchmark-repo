@@ -50,11 +50,13 @@ def ctrl(code):
 
 
 def move_pointer(window, x, y):
-    # Sway fullscreen windows use output coordinates. Flat acceleration is
-    # configured in run.sh: ydotool's absolute movement resets relative input.
+    # Pointer setup is excluded from counting. ydotool 1.0.4's --absolute
+    # simulates a reset using INT32_MIN relative motion; libinput can discard
+    # that motion. Use the compositor's acknowledged pixel coordinates instead.
     rect = window['rect']
-    subprocess.run(['ydotool', 'mousemove', '--absolute',
-                    str(rect['x'] + x), str(rect['y'] + y)], check=True, timeout=5)
+    reply = sway(f"seat seat0 cursor set {rect['x'] + x} {rect['y'] + y}")
+    if not all(item.get('success') for item in reply):
+        raise RuntimeError(f'could not position pointer: {reply}')
 
 
 def click():

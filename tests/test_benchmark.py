@@ -15,7 +15,7 @@ from benchmark import (CLIPBOARD_SENTINEL_PREFIX, DOUBLE_CLICK_DELAY_MS, FIXTURE
                        double_click_command, focus_click_coordinates,
                        clipboard_after_copy, selection_coordinates, selection_evidence_is_valid,
                        zed_post_open_settle_seconds)
-from wayland import main_windows
+from wayland import main_windows, move_pointer
 from counters import Capture, parse_counter
 import report
 from install import BUILD_APPS
@@ -127,6 +127,13 @@ class BenchmarkTest(unittest.TestCase):
                     command = command_for(editor, Path('/tmp/profile'), Path('/tmp/fixture'))
                     self.assertIn('--ozone-platform=wayland', command)
                     self.assertNotIn('--ozone-platform=x11', command)
+
+    def test_pointer_setup_uses_acknowledged_compositor_pixel_coordinates(self):
+        with patch('wayland.sway', return_value=[{'success': True}]) as ipc:
+            move_pointer({'rect': {'x': 10, 'y': 20}}, 200, 160)
+            ipc.assert_called_once_with('seat seat0 cursor set 210 180')
+        with patch('wayland.sway', return_value=[{'success': False}]), self.assertRaises(RuntimeError):
+            move_pointer({'rect': {'x': 0, 'y': 0}}, 200, 160)
 
     def test_counter_control_and_multiplex_validation(self):
         for ack in [b'ack\n', b'ack\n\x00', b'wrong\n']:

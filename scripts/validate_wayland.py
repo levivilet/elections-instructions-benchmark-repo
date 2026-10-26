@@ -16,11 +16,23 @@ def main():
     if '--client' in sys.argv:
         import gi
         gi.require_version('Gtk', '3.0')
-        from gi.repository import Gtk
+        from gi.repository import Gtk, GLib
         window = Gtk.Window(title='Wayland input acceptance')
         view = Gtk.TextView()
         view.set_monospace(True)
         view.get_buffer().set_text(TEXT)
+        def record_click(widget, event):
+            def record_selection():
+                buffer = view.get_buffer()
+                bounds = buffer.get_selection_bounds()
+                selection = buffer.get_text(*bounds, True) if bounds else None
+                with Path('results/wayland-client-events.jsonl').open('a') as stream:
+                    stream.write(json.dumps(dict(type=str(event.type), x=event.x,
+                                                 y=event.y, selection=selection)) + '\n')
+                return False
+            GLib.idle_add(record_selection)
+            return False
+        view.connect('button-press-event', record_click)
         window.add(view)
         window.connect('destroy', Gtk.main_quit)
         window.show_all()
