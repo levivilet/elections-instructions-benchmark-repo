@@ -50,6 +50,8 @@ def main():
         GLib.timeout_add(100, report_target)
         Gtk.main()
         return
+    for artifact in ['wayland-client-target.json', 'wayland-client-events.jsonl']:
+        Path('results', artifact).unlink(missing_ok=True)
     child = subprocess.Popen([sys.executable, __file__, '--client'], env={**os.environ, 'GDK_BACKEND': 'wayland'})
     try:
         deadline = time.monotonic() + 15
