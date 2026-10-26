@@ -22,7 +22,9 @@ def main():
         view.set_monospace(True)
         view.get_buffer().set_text(TEXT)
         def record_click(widget, event):
-            event_data = dict(type=str(event.type), x=event.x, y=event.y)
+            event_data = dict(type=str(event.type), x=event.x, y=event.y,
+                              button=event.button, state=int(event.state), time=event.time,
+                              textWindow=event.window == view.get_window(Gtk.TextWindowType.TEXT))
             def record_selection():
                 buffer = view.get_buffer()
                 bounds = buffer.get_selection_bounds()
@@ -33,7 +35,18 @@ def main():
             GLib.idle_add(record_selection)
             return False
         view.connect('button-press-event', record_click)
-        window.add(view)
+        view.connect('button-release-event', record_click)
+        def record_mark(buffer, location, mark):
+            bounds = buffer.get_selection_bounds()
+            with Path('results/wayland-client-events.jsonl').open('a') as stream:
+                stream.write(json.dumps(dict(mark=mark.get_name(), offset=location.get_offset(),
+                    selection=buffer.get_text(*bounds, True) if bounds else None)) + '\n')
+        view.get_buffer().connect('mark-set', record_mark)
+        scroller = Gtk.ScrolledWindow()
+        scroller.add(view)
+        window.add(scroller)
+        window.set_default_size(1280, 800)
+        view.get_buffer().place_cursor(view.get_buffer().get_start_iter())
         window.connect('destroy', Gtk.main_quit)
         window.show_all()
         def report_target():
