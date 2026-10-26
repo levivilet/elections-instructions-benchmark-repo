@@ -2,10 +2,10 @@
   {
     "id": "lvce",
     "name": "LVCE Editor",
-    "version": "v0.123.21",
-    "archive": "lvce-v0.123.21_arm64.deb",
-    "url": "https://github.com/lvce-editor/lvce-editor/releases/download/v0.123.21/lvce-v0.123.21_arm64.deb",
-    "sha256": "9ba53bf6a8222871775c3b01910bf27afd73e59f09c379dd7144323162d3474b",
+    "version": "v0.125.20",
+    "archive": "lvce-v0.125.20_arm64.deb",
+    "url": "https://github.com/lvce-editor/lvce-editor/releases/download/v0.125.20/lvce-v0.125.20_arm64.deb",
+    "sha256": "dd318b66b09f01f11043c32984276fe5abfc99ceeda3788e635154b8e1742a19",
     "binary": "usr/lib/lvce/lvce"
   },
   {
