@@ -47,8 +47,6 @@ PROTOCOL = {
 def command_for(editor, home, fixture):
     binary = str(ROOT / '.tmp/apps' / editor['id'] / editor['binary'])
     editor_id = editor['id']
-    if editor_id == 'geany':
-        return ['geany', '--new-instance', str(fixture)]
     args = []
     if editor_id in {'lvce', 'vscode', 'basic-electron', 'codemirror6', 'codemirror5', 'ace'}:
         args += ['--no-sandbox', '--disable-gpu', '--ozone-platform=wayland']

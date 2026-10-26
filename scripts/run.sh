@@ -73,6 +73,10 @@ swaymsg -r -t get_inputs > results/wayland-inputs.json
 # Prove client input, focus and clipboard before opening measured editors.
 GDK_BACKEND=wayland python3 scripts/validate_wayland.py
 if [ "${1:-}" != --validate-input ]; then
+  # PAM may replace XDG_RUNTIME_DIR during sudo, even with --preserve-env.
+  # Restore the compositor runtime after that transition, before Python builds
+  # the absolute display socket used by each fresh application profile.
   sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET,BENCHMARK_RUN_URL,BENCHMARK_COMMIT,BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS \
+    env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
     python3 scripts/benchmark.py --editor "$1" --perf "$2" --repeats 3
 fi

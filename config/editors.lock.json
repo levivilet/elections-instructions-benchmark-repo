@@ -56,13 +56,6 @@
     "app": "basic-electron"
   },
   {
-    "id": "geany",
-    "name": "Geany",
-    "version": "Ubuntu 24.04 package 2.0-1build2",
-    "binary": "geany",
-    "package": "geany"
-  },
-  {
     "id": "codemirror5",
     "name": "CodeMirror 5 (Electron)",
     "version": "CodeMirror 5.65.21 / Electron v44.9.0",

@@ -44,13 +44,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        editor: [lvce, vscode, zed, lapce, geany, basic-electron, codemirror6, codemirror5, ace]
+        editor: [lvce, vscode, zed, lapce, basic-electron, codemirror6, codemirror5, ace]
     steps:
       - uses: actions/checkout@v5
       - name: Install desktop and perf
         run: |
           sudo apt-get update
-          sudo apt-get install -y linux-tools-generic python3 curl xz-utils sway seatd wl-clipboard geany build-essential cmake scdoc python3-gi gir1.2-gtk-3.0 \
+          sudo apt-get install -y linux-tools-generic python3 curl xz-utils sway seatd wl-clipboard build-essential cmake scdoc python3-gi gir1.2-gtk-3.0 \
             libgtk-3-0 libnss3 libgbm1 libxss1 libxtst6 libxkbcommon-x11-0 libxkbfile1 libsecret-1-0 \
             mesa-utils mesa-vulkan-drivers libvulkan1 libasound2t64
           sudo sysctl kernel.perf_event_paranoid=-1

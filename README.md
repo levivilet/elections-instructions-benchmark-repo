@@ -13,8 +13,9 @@ Incomplete matrices and invalid selections are never published.
 ## Measurement protocol
 
 - Linux ARM64, Ubuntu 24.04 ARM, native Wayland (headless Sway + libinput), one editor per runner. The matrix is
-  LVCE Editor, VS Code, Zed, Lapce, Geany, Basic Electron, CodeMirror 6,
-  CodeMirror 5, and Ace in Electron.
+  LVCE Editor, VS Code, Zed, Lapce, Basic Electron, CodeMirror 6,
+  CodeMirror 5, and Ace in Electron. Geany is omitted because its native Wayland
+  launch has not been validated.
 - Each trial opens a fresh text fixture using a fresh HOME and XDG profile. Its
   short rows repeat the unique word `selectiontarget` so every supported editor
   has text beneath the measured pointer coordinates without soft-wrapped lines.
@@ -81,7 +82,7 @@ explicitly, while all application HOME/XDG state remains isolated.
 
 ## CI
 
-Every pull request runs hardware-accounting acceptance, all nine editor trials,
+Every pull request runs hardware-accounting acceptance, all eight editor trials,
 and the complete-report regression checks on the ARM runner matrix. Main pushes,
 scheduled runs, and manual runs publish three trials per editor and deploy the
 validated report to GitHub Pages. CI does not publish a partial matrix.
