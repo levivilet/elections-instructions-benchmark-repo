@@ -5,7 +5,7 @@ real double-click on Linux ARM64. The chart reports each editor's median from
 three fresh-profile trials, ordered from fewest instructions to most.
 
 The latest complete run is published at
-[GitHub Pages](https://levivilet.github.io/elections-instructions-benchmark-repo/).
+[GitHub Pages](https://levivilet.github.io/selections-instructions-benchmark/).
 Each result includes the raw hardware counter, exact trial boundaries, host
 metadata, clipboard evidence, and a digest proving the document stayed intact.
 Incomplete matrices and invalid selections are never published.
