@@ -22,13 +22,13 @@ def main():
         view.set_monospace(True)
         view.get_buffer().set_text(TEXT)
         def record_click(widget, event):
+            event_data = dict(type=str(event.type), x=event.x, y=event.y)
             def record_selection():
                 buffer = view.get_buffer()
                 bounds = buffer.get_selection_bounds()
                 selection = buffer.get_text(*bounds, True) if bounds else None
                 with Path('results/wayland-client-events.jsonl').open('a') as stream:
-                    stream.write(json.dumps(dict(type=str(event.type), x=event.x,
-                                                 y=event.y, selection=selection)) + '\n')
+                    stream.write(json.dumps(dict(event_data, selection=selection)) + '\n')
                 return False
             GLib.idle_add(record_selection)
             return False
@@ -36,6 +36,18 @@ def main():
         window.add(view)
         window.connect('destroy', Gtk.main_quit)
         window.show_all()
+        def report_target():
+            rect = view.get_iter_location(view.get_buffer().get_iter_at_offset(6))
+            x, y = view.buffer_to_window_coords(Gtk.TextWindowType.WIDGET,
+                                               rect.x + rect.width // 2,
+                                               rect.y + rect.height // 2)
+            target = view.translate_coordinates(window, x, y)
+            Path('results/wayland-client-target.json').write_text(json.dumps(
+                dict(target=target, glyph=dict(x=rect.x, y=rect.y, width=rect.width,
+                                              height=rect.height),
+                     allocation=[view.get_allocated_width(), view.get_allocated_height()])))
+            return False
+        GLib.timeout_add(100, report_target)
         Gtk.main()
         return
     child = subprocess.Popen([sys.executable, __file__, '--client'], env={**os.environ, 'GDK_BACKEND': 'wayland'})
@@ -43,18 +55,20 @@ def main():
         deadline = time.monotonic() + 15
         while True:
             window = visible_window([child.pid])
-            if window:
+            if window and Path('results/wayland-client-target.json').exists():
                 break
             if child.poll() is not None or time.monotonic() >= deadline:
                 raise RuntimeError('native test client did not appear')
             time.sleep(.05)
+        layout = json.loads(Path('results/wayland-client-target.json').read_text())
+        x, y = layout['target']
         focus(window)
         time.sleep(.2)
         # Keep the focus click away from the measured double-click so GTK
         # does not interpret the three presses as a line-selecting triple-click.
-        move_pointer(window, 280, 160)
+        move_pointer(window, x + 80, y)
         click()
-        move_pointer(window, 200, 160)
+        move_pointer(window, x, y)
         time.sleep(.2)
         focused = focused_window([child.pid])
         if not focused:
@@ -73,7 +87,7 @@ def main():
         if clipboard_after_copy(selected) != TEXT:
             raise RuntimeError('ydotool keyboard did not select the full test document')
         Path('results/wayland-acceptance.json').write_text(json.dumps(
-            dict(valid=True, window=window, focused=focused, selection=selected,
+            dict(valid=True, window=window, focused=focused, selection=selected, layout=layout,
                  inputDriver='ydotool 1.0.4', display='native Wayland'), indent=2) + '\n')
     finally:
         child.terminate()
