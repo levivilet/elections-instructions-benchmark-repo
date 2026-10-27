@@ -46,7 +46,8 @@ class ProfileCapture(Capture):
         self.process.send_signal(signal.SIGINT)
         self.process.wait(timeout=10)
         self.log.flush()
-        if self.process.returncode != 0:
+        # perf finalizes data, then re-raises SIGINT on some supported versions.
+        if self.process.returncode not in (0, -signal.SIGINT):
             raise RuntimeError((self.directory / 'perf.log').read_text())
         destination = Path(os.environ['SELECTION_PROFILE_DESTINATION'])
         destination.mkdir(parents=True)
@@ -59,6 +60,8 @@ class ProfileCapture(Capture):
             with (destination / name).open('w') as output:
                 subprocess.run([self.perf, *args, '-i', str(self.directory / 'perf.data')],
                                stdout=output, stderr=subprocess.STDOUT, check=True)
+        if not (destination / 'stacks.txt').read_text().strip():
+            raise RuntimeError('instruction profile contains no samples')
         for name in ['perf.data', 'perf.log']:
             (self.directory / name).replace(destination / name)
         return {'diagnosticProfile': str(destination), 'cutoffAcknowledged': True}
