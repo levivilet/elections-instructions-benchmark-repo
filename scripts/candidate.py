@@ -131,7 +131,7 @@ def main():
     parser.add_argument('--perf', required=True)
     parser.add_argument('--bundle', type=Path, required=True)
     parser.add_argument('--revision', required=True)
-    parser.add_argument('--label', choices=['baseline', 'dependency', 'token', 'property', 'flat', 'row', 'paired-candidate', 'paired-row', 'candidate', 'response', 'allocations', 'native', 'cpu', 'without-status'], default='candidate')
+    parser.add_argument('--label', choices=['baseline', 'dependency', 'token', 'property', 'flat', 'row', 'paired-candidate', 'paired-row', 'candidate', 'response', 'allocations', 'native', 'cpu', 'without-status', 'without-line-decorations'], default='candidate')
     parser.add_argument('--virtual-dom-revision')
     parser.add_argument('--pointer-render', action='store_true')
     parser.add_argument('--editor-overlay', action='store_true')
@@ -189,6 +189,7 @@ def main():
                        'immediateRender': args.immediate_render and label == args.label,
                        'editorStylesSha256': hashlib.sha256(css_candidate if editor_overlay else css_original).hexdigest() if css_original else None,
                        'diagnosticStatusSuppressed': label == 'without-status',
+                       'diagnosticLineDecorationsSuppressed': label == 'without-line-decorations',
                        'rendererPatchRevision': args.renderer_revision if pointer_render or args.immediate_render else None,
                        'rendererBundleSha256': hashlib.sha256(renderer_candidate if label == args.label else renderer_pointer if pointer_render else renderer_original).hexdigest() if renderer_original else None,
                        'allocationProfiling': args.allocation_profile,

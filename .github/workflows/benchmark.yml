@@ -143,6 +143,19 @@ jobs:
           done
           npm run build
           cp .tmp/dist/dist/editorWorkerMain.js ../monospaceControlWorkerMain.js
+      - name: Build diagnostic without line-decoration providers
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/monospace-worker
+        run: |
+          module=packages/editor-worker/src/parts/GetEditorLineDecorations/GetEditorLineDecorations.ts
+          restore() {
+            git show "HEAD:$module" > "$module"
+            cp ../monospaceControlWorkerMain.js .tmp/dist/dist/editorWorkerMain.js
+          }
+          trap restore EXIT
+          python3 ../../scripts/disable-line-decorations.py "$module"
+          npm run build
+          cp .tmp/dist/dist/editorWorkerMain.js ../noLineDecorationsWorkerMain.js
       - uses: actions/checkout@v5
         if: matrix.editor == 'lvce'
         with:
@@ -177,8 +190,9 @@ jobs:
           BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/monospace-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_CANDIDATE_REVISION: 4db09454c5adcadfcc2fd167c325e7e20fb82e98
           BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION: 4c00282f940199629d6f440e7afb43369b76ba1a
-          BENCHMARK_RENDERER_REVISION: 7dca9270fe83fbe3199a20411a74222b1361f187
+          BENCHMARK_RENDERER_REVISION: 337459f154e11dbcae294b7c52cd34bded752d67
           BENCHMARK_MONOSPACE_CONTROL_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/monospaceControlWorkerMain.js', github.workspace) || '' }}
+          BENCHMARK_NO_LINE_DECORATIONS_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/noLineDecorationsWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_ROW_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/row-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_ROW_REVISION: 7291fd4e62e58a73cf84c85a5f8852e125b59935
           BENCHMARK_CONTROL_REVISION: 694001f4c388e7a4099275092db5cce7e834f49e

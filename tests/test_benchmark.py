@@ -50,7 +50,7 @@ def result(editor, counts=(100, 300, 200)):
 
 class BenchmarkTest(unittest.TestCase):
     def test_paired_candidates_alternate_and_restore_the_installed_bundle(self):
-        for fail, status_ablation, control_pointer, immediate in [(f, a, c, i) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]]:
+        for fail, status_ablation, control_pointer, immediate, line_ablation in [(f, a, c, i, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True), (True, False, True, False, True)]:
             with self.subTest(fail=fail, status_ablation=status_ablation, control_pointer=control_pointer), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / 'config').mkdir()
@@ -81,7 +81,7 @@ class BenchmarkTest(unittest.TestCase):
                     if fail and len(observed) == 3:
                         raise RuntimeError('measurement failed')
                     return trial()
-                label = 'without-status' if status_ablation else 'paired-candidate'
+                label = 'without-line-decorations' if line_ablation else 'without-status' if status_ablation else 'paired-candidate'
                 argv = ['candidate.py', '--perf', 'test', '--bundle', str(bundle), '--revision', 'candidate-sha',
                         '--label', label, '--control-bundle', str(control), '--control-revision', 'control-sha',
                         '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
@@ -109,6 +109,7 @@ class BenchmarkTest(unittest.TestCase):
                         self.assertEqual(output['pointerRender'], status_ablation or control_pointer or output_label != 'paired-flat')
                         self.assertEqual(output['immediateRender'], immediate and output_label != 'paired-flat')
                         self.assertEqual(output['editorOverlay'], output_label != 'paired-flat')
+                        self.assertEqual(output['diagnosticLineDecorationsSuppressed'], line_ablation and output_label != 'paired-flat')
                         self.assertEqual(output['diagnosticStatusSuppressed'], output_label == 'without-status')
                         self.assertEqual(len(output['trials']), 3)
                         self.assertEqual(len(output['sequence']), 6)
@@ -125,6 +126,17 @@ class BenchmarkTest(unittest.TestCase):
         for content in ['', fixture.read_text() * 2]:
             with self.assertRaisesRegex(RuntimeError, 'expected one pinned'):
                 candidate.immediate_renderer(content)
+
+    def test_line_decoration_probe_requires_the_known_provider_implementation(self):
+        import runpy
+        disable = runpy.run_path(str(Path(__file__).parents[1] / 'scripts/disable-line-decorations.py'))['disable_line_decorations']
+        source = "export const getEditorLineDecorations = async (editor: EditorState, rowIndex: number): Promise<readonly EditorLineDecoration[]> => {\n 'onEditorLineDecoration'\n}"
+        patched = disable(source)
+        self.assertIn('=> []', patched)
+        self.assertNotIn('ApplicationExtensionRpc', patched)
+        for content in ['', source * 2]:
+            with self.assertRaisesRegex(RuntimeError, 'expected one known'):
+                disable(content)
 
     def test_pointer_renderer_rejects_unmatched_or_ambiguous_build_output(self):
         for source in ['', candidate.POINTER_RENDER_ANCHOR * 2]:
