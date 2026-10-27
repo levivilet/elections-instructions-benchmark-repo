@@ -177,7 +177,7 @@ jobs:
           BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/monospace-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_CANDIDATE_REVISION: 4db09454c5adcadfcc2fd167c325e7e20fb82e98
           BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION: 4c00282f940199629d6f440e7afb43369b76ba1a
-          BENCHMARK_RENDERER_REVISION: 26178d927c08dccb2d190fdcd9cab55ee4367166
+          BENCHMARK_RENDERER_REVISION: 7dca9270fe83fbe3199a20411a74222b1361f187
           BENCHMARK_MONOSPACE_CONTROL_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/monospaceControlWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_ROW_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/row-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_ROW_REVISION: 7291fd4e62e58a73cf84c85a5f8852e125b59935

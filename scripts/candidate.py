@@ -56,6 +56,76 @@ def pointer_renderer(content):
 """ + POINTER_RENDER_ANCHOR)
 
 
+
+def immediate_renderer(content):
+    # Reviewed ordered scheduler barrier, backported to the pinned release.
+    # Keep its existing normalization, global tail, failure recovery and frame cap.
+    def replace_once(old, new):
+        nonlocal content
+        if content.count(old) != 1:
+            raise RuntimeError('expected one pinned immediate-render anchor: ' + old[:65])
+        content = content.replace(old, new)
+
+    start = content.index('// src/parts/RendererFrameScheduler/RendererFrameScheduler.js') if '// src/parts/RendererFrameScheduler/RendererFrameScheduler.js' in content else -1
+    end = content.find('// src/parts/RendererProcess/RendererProcess.js', start)
+    if start < 0 or end < 0:
+        raise RuntimeError('expected one pinned immediate-render scheduler boundary')
+    prefix, suffix = content[:start], content[end:]
+    content = content[start:end]
+    replace_once('waitForEligibleFrame = () => {\n      if (isTest()) {',
+                 'waitForEligibleFrame = (frame) => {\n      if (frame.immediate || isTest()) {')
+    replace_once('          settled = true;\n          clearTimeout(timer);',
+                 '          settled = true;\n          frame.flush = void 0;\n          clearTimeout(timer);')
+    replace_once('        frameId = requestAnimationFrame(handleFrame);\n      });',
+                 '        frameId = requestAnimationFrame(handleFrame);\n        frame.flush = () => finish(now());\n      });')
+    replace_once('const timestamp = await waitForEligibleFrame();',
+                 'const timestamp = await waitForEligibleFrame(frame);')
+    replace_once("""    sendMultiple = (commands2) => {
+      if (state3.pendingFrame) {
+        state3.pendingFrame.commands.push(...commands2);
+        return state3.pendingFrame.promise;
+      }
+      const frame = {
+        commands: [...commands2],
+        promise: Promise.resolve()
+      };""", """    sendMultiple = (commands2, immediate = false) => {
+      const { pendingFrame } = state3;
+      if (pendingFrame) {
+        pendingFrame.commands.push(...commands2);
+        if (immediate) {
+          pendingFrame.immediate = true;
+          pendingFrame.flush?.();
+        }
+        return pendingFrame.promise;
+      }
+      const frame = {
+        commands: [...commands2],
+        immediate,
+        promise: Promise.resolve()
+      };""")
+    content = prefix + content + suffix
+    replace_once('__export(ViewletEditorText_ipc_exports, {',
+                 '__export(ViewletEditorText_ipc_exports, {\n  immediateCommands: () => ["handleMouseDown"],')
+    old = """      if (commands2.length > 0) {
+        await invoke2(
+          /* Viewlet.sendMultiple */
+          "Viewlet.sendMultiple",
+          /* commands */
+          commands2
+        );
+      }
+      if (getInstance(uid) === instance && instance.factory.afterRender)"""
+    new = """      if (commands2.length > 0) {
+        if (instance.factory.immediateCommands?.includes(fnName)) {
+          await sendMultiple(commands2, true);
+        } else {
+          await invoke2("Viewlet.sendMultiple", commands2);
+        }
+      }
+      if (getInstance(uid) === instance && instance.factory.afterRender)"""
+    replace_once(old, new)
+    return content
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--perf', required=True)
@@ -65,6 +135,7 @@ def main():
     parser.add_argument('--virtual-dom-revision')
     parser.add_argument('--pointer-render', action='store_true')
     parser.add_argument('--editor-overlay', action='store_true')
+    parser.add_argument('--immediate-render', action='store_true')
     parser.add_argument('--renderer-revision')
     parser.add_argument('--control-bundle', type=Path)
     parser.add_argument('--control-label', default='paired-flat')
@@ -79,7 +150,7 @@ def main():
     args = parser.parse_args()
     if args.control_bundle and (not args.control_revision or args.response or args.allocation_profile or args.native_profile or args.cpu_profile):
         parser.error('paired counts require a control revision and no observer')
-    if args.pointer_render and not args.renderer_revision:
+    if (args.pointer_render or args.immediate_render) and not args.renderer_revision:
         parser.error('pointer renderer requires its reviewed source revision')
     editor = next(e for e in json.loads((ROOT / 'config/editors.lock.json').read_text()) if e['id'] == 'lvce')
     targets = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/packages/editor-worker/dist/editorWorkerMain.js'))
@@ -88,13 +159,14 @@ def main():
     target = targets[0]
     renderer_target = None
     renderer_original = renderer_candidate = None
-    if args.pointer_render:
+    if args.pointer_render or args.immediate_render:
         renderers = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/packages/renderer-worker/dist/rendererWorkerMain.js'))
         if len(renderers) != 1:
             raise RuntimeError(f'expected one installed renderer bundle, got {renderers}')
         renderer_target = renderers[0]
         renderer_original = renderer_target.read_bytes()
-        renderer_candidate = pointer_renderer(renderer_original.decode()).encode()
+        renderer_pointer = pointer_renderer(renderer_original.decode()).encode() if args.pointer_render else renderer_original
+        renderer_candidate = immediate_renderer(renderer_pointer.decode()).encode() if args.immediate_render else renderer_pointer
     css_target = None
     css_original = css_candidate = None
     if args.editor_overlay:
@@ -114,10 +186,11 @@ def main():
                        'virtualDomRevision': virtual_dom_revision,
                        'pointerRender': pointer_render,
                        'editorOverlay': editor_overlay,
+                       'immediateRender': args.immediate_render and label == args.label,
                        'editorStylesSha256': hashlib.sha256(css_candidate if editor_overlay else css_original).hexdigest() if css_original else None,
                        'diagnosticStatusSuppressed': label == 'without-status',
-                       'rendererPatchRevision': args.renderer_revision if pointer_render else None,
-                       'rendererBundleSha256': hashlib.sha256(renderer_candidate if pointer_render else renderer_original).hexdigest() if renderer_original else None,
+                       'rendererPatchRevision': args.renderer_revision if pointer_render or args.immediate_render else None,
+                       'rendererBundleSha256': hashlib.sha256(renderer_candidate if label == args.label else renderer_pointer if pointer_render else renderer_original).hexdigest() if renderer_original else None,
                        'allocationProfiling': args.allocation_profile,
                        'nativeProfiling': args.native_profile,
                        'cpuProfiling': args.cpu_profile,
@@ -137,7 +210,7 @@ def main():
                 for label, bundle, revision, _virtual_dom_revision, pointer_render, editor_overlay in ordered:
                     shutil.copyfile(bundle, target)
                     if renderer_target:
-                        renderer_target.write_bytes(renderer_candidate if pointer_render else renderer_original)
+                        renderer_target.write_bytes(renderer_candidate if label == args.label else renderer_pointer if pointer_render else renderer_original)
                     if css_target:
                         css_target.write_bytes(css_candidate if editor_overlay else css_original)
                     options = {'capture_type': CandidateCapture}

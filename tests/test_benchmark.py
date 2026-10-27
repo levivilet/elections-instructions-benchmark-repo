@@ -50,7 +50,7 @@ def result(editor, counts=(100, 300, 200)):
 
 class BenchmarkTest(unittest.TestCase):
     def test_paired_candidates_alternate_and_restore_the_installed_bundle(self):
-        for fail, status_ablation, control_pointer in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)]:
+        for fail, status_ablation, control_pointer, immediate in [(f, a, c, i) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]]:
             with self.subTest(fail=fail, status_ablation=status_ablation, control_pointer=control_pointer), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / 'config').mkdir()
@@ -60,7 +60,9 @@ class BenchmarkTest(unittest.TestCase):
                 installed.write_text('original')
                 renderer = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/packages/renderer-worker/dist/rendererWorkerMain.js'
                 renderer.parent.mkdir(parents=True)
-                renderer.write_text(candidate.POINTER_RENDER_ANCHOR)
+                original_renderer = candidate.POINTER_RENDER_ANCHOR + (Path(__file__).parent / 'fixtures/pinned-render-barrier.js').read_text()
+                renderer.write_text(original_renderer)
+                immediate_observed = []
                 pointer_observed = []
                 css = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/css/App.css'
                 css.parent.mkdir(parents=True)
@@ -73,6 +75,7 @@ class BenchmarkTest(unittest.TestCase):
                 observed = []
                 def measure(*args, **kwargs):
                     observed.append(installed.read_text())
+                    immediate_observed.append('if (frame.immediate || isTest())' in renderer.read_text())
                     css_observed.append(css.read_text().endswith(candidate.OVERLAY_CSS.decode()))
                     pointer_observed.append('Editor.handleMouseDownAndRender' in renderer.read_text())
                     if fail and len(observed) == 3:
@@ -83,6 +86,8 @@ class BenchmarkTest(unittest.TestCase):
                         '--label', label, '--control-bundle', str(control), '--control-revision', 'control-sha',
                         '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
                         '--pointer-render', '--renderer-revision', 'reviewed-renderer', '--editor-overlay']
+                if immediate:
+                    argv.append('--immediate-render')
                 if control_pointer:
                     argv.append('--control-pointer-render')
                 with contextlib.chdir(root), patch.object(candidate, 'ROOT', root), \
@@ -90,10 +95,11 @@ class BenchmarkTest(unittest.TestCase):
                     with self.assertRaises(RuntimeError) if fail else contextlib.nullcontext():
                         candidate.main()
                 self.assertEqual(installed.read_text(), 'original')
-                self.assertEqual(renderer.read_text(), candidate.POINTER_RENDER_ANCHOR)
+                self.assertEqual(renderer.read_text(), original_renderer)
                 self.assertEqual(css.read_text(), '.EditorLayers {} .EditorSelection {}')
                 if not fail:
                     self.assertEqual(observed, ['control', 'candidate', 'candidate', 'control', 'control', 'candidate'])
+                    self.assertEqual(immediate_observed, [False, True, True, False, False, True] if immediate else [False] * 6)
                     self.assertEqual(css_observed, [False, True, True, False, False, True])
                     self.assertEqual(pointer_observed, [True] * 6 if status_ablation or control_pointer else [False, True, True, False, False, True])
                     for output_label, revision in [(label, 'candidate-sha'), ('paired-flat', 'control-sha')]:
@@ -101,10 +107,24 @@ class BenchmarkTest(unittest.TestCase):
                         self.assertEqual(output['workerRevision'], revision)
                         self.assertEqual(output['virtualDomRevision'], 'old-diff' if output_label == 'paired-flat' else 'new-diff')
                         self.assertEqual(output['pointerRender'], status_ablation or control_pointer or output_label != 'paired-flat')
+                        self.assertEqual(output['immediateRender'], immediate and output_label != 'paired-flat')
                         self.assertEqual(output['editorOverlay'], output_label != 'paired-flat')
                         self.assertEqual(output['diagnosticStatusSuppressed'], output_label == 'without-status')
                         self.assertEqual(len(output['trials']), 3)
                         self.assertEqual(len(output['sequence']), 6)
+
+    def test_immediate_backport_preserves_ordered_pending_frame_and_background_batching(self):
+        import subprocess
+        fixture = Path(__file__).parent / 'fixtures/pinned-render-barrier.js'
+        patched = candidate.immediate_renderer(fixture.read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'patched.js'
+            target.write_text(patched)
+            subprocess.run(['node', str(Path(__file__).parent / 'check-render-barrier.mjs'), str(target)], check=True)
+        self.assertIn('instance.factory.immediateCommands?.includes(fnName)', patched)
+        for content in ['', fixture.read_text() * 2]:
+            with self.assertRaisesRegex(RuntimeError, 'expected one pinned'):
+                candidate.immediate_renderer(content)
 
     def test_pointer_renderer_rejects_unmatched_or_ambiguous_build_output(self):
         for source in ['', candidate.POINTER_RENDER_ANCHOR * 2]:
