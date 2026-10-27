@@ -27,14 +27,15 @@ class ProfileCapture(Capture):
     def start(self):
         if self.disabled_at is None:
             raise RuntimeError('profile must be disabled before selection starts')
-        destination = Path(os.environ['SELECTION_PROFILE_DESTINATION'])
-        destination.mkdir(parents=True)
-        self.cpu_log = (destination / 'javascript.log').open('w')
-        self.cpu_profiler = subprocess.Popen(
-            ['node', str(ROOT / 'scripts/profile-javascript.mjs'), str(destination / 'javascript')],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.cpu_log, text=True)
-        if self.cpu_profiler.stdout.readline().strip() != 'ready':
-            raise RuntimeError('JavaScript profiler failed to attach; see javascript.log')
+        if os.environ.get('BENCHMARK_JAVASCRIPT_PROFILE') == '1':
+            destination = Path(os.environ['SELECTION_PROFILE_DESTINATION'])
+            destination.mkdir(parents=True)
+            self.cpu_log = (destination / 'javascript.log').open('w')
+            self.cpu_profiler = subprocess.Popen(
+                ['node', str(ROOT / 'scripts/profile-javascript.mjs'), str(destination / 'javascript')],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.cpu_log, text=True)
+            if self.cpu_profiler.stdout.readline().strip() != 'ready':
+                raise RuntimeError('JavaScript profiler failed to attach; see javascript.log')
         # Create the recorder after startup, so its initial metadata synthesis
         # sees the editor's existing processes, threads and executable maps.
         for name in ['control', 'ack']:
@@ -56,7 +57,8 @@ class ProfileCapture(Capture):
     def launch(self, command, environment, stdout, stderr, cwd=None):
         # Resolve V8 generated code in the sampled profile. This extra work is
         # deliberately restricted to diagnostic trials, never official counts.
-        command = [command[0], '--js-flags=--perf-basic-prof', '--remote-debugging-port=9222', *command[1:]]
+        if os.environ.get('BENCHMARK_JAVASCRIPT_PROFILE') == '1':
+            command = [command[0], '--js-flags=--perf-basic-prof', '--remote-debugging-port=9222', *command[1:]]
         return super().launch(command, environment, stdout, stderr, cwd)
 
     def __exit__(self, *args):
@@ -77,10 +79,11 @@ class ProfileCapture(Capture):
             raise RuntimeError('profile has no acknowledged cutoff')
         destination = Path(os.environ['SELECTION_PROFILE_DESTINATION'])
         destination.mkdir(parents=True, exist_ok=True)
-        self.cpu_profiler.stdin.write('\n')
-        self.cpu_profiler.stdin.flush()
-        if self.cpu_profiler.wait(timeout=30) != 0:
-            raise RuntimeError('JavaScript profiler failed to save; see javascript.log')
+        if hasattr(self, 'cpu_profiler'):
+            self.cpu_profiler.stdin.write('\n')
+            self.cpu_profiler.stdin.flush()
+            if self.cpu_profiler.wait(timeout=30) != 0:
+                raise RuntimeError('JavaScript profiler failed to save; see javascript.log')
         processes = []
         for pid in self.pids():
             process = Path('/proc') / str(pid)
@@ -102,6 +105,7 @@ class ProfileCapture(Capture):
             ('report.txt', ['report', '--stdio', '--no-children', '--percent-limit', '0.5',
                             '--sort', 'comm,dso,symbol']),
             ('stacks.txt', ['script', '-F', 'comm,pid,tid,time,event,ip,sym,dso']),
+            ('leaf.txt', ['script', '-G', '-F', 'comm,pid,tid,time,event,ip,sym,dso']),
         ]:
             with (destination / name).open('w') as output:
                 subprocess.run([self.perf, *args, '-i', str(self.directory / 'perf.data')],
@@ -129,15 +133,17 @@ def main():
     destination.mkdir(parents=True, exist_ok=True)
     output = {'editor': editor, 'protocol': PROTOCOL,
               'note': 'Diagnostic only. Sampling overhead and idle counts are not official selection results.',
-              'idle': [], 'profiles': []}
+              'javascriptProfiling': os.environ.get('BENCHMARK_JAVASCRIPT_PROFILE') == '1',
+              'idle': [], 'editWarmup': [], 'profiles': []}
     output_path = destination / 'diagnostics.json'
-    for kind, options in [('idle', {'idle': True}), ('profiles', {'capture_type': ProfileCapture})]:
+    for kind, options in [('idle', {'idle': True}), ('editWarmup', {'warm': True}),
+                          ('profiles', {'capture_type': ProfileCapture})]:
         for repeat in range(1, 4):
             os.environ['SELECTION_PROFILE_DESTINATION'] = str(destination / f'profile-{repeat}')
             result = dict(trial(editor, args.perf, **options), repeat=repeat)
             output[kind].append(result)
             output_path.write_text(json.dumps(output, indent=2) + '\n')
-            if not result['valid'] or (kind == 'profiles' and not selection_evidence_is_valid(result)):
+            if not result['valid'] or (kind != 'idle' and not selection_evidence_is_valid(result)):
                 raise SystemExit(f'invalid {kind} diagnostic: {result}')
 
 

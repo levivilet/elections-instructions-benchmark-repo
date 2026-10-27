@@ -83,7 +83,7 @@ if [ "${1:-}" != --validate-input ]; then
   # can leave compositor input state from the preceding session. Every editor
   # trial still launches a new process tree with a fresh application profile.
   if [ "${BENCHMARK_DIAGNOSE:-0}" = 1 ]; then
-    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET,BENCHMARK_JAVASCRIPT_PROFILE \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
       python3 scripts/diagnose.py --editor "$1" --perf "$2"
   fi
