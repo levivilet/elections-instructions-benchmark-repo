@@ -2,12 +2,14 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import tempfile
 
 from benchmark import ROOT, PROTOCOL, trial, selection_evidence_is_valid
 from counters import parse_counter
+from response import ResponseCapture
 
 
 def main():
@@ -15,8 +17,9 @@ def main():
     parser.add_argument('--perf', required=True)
     parser.add_argument('--bundle', type=Path, required=True)
     parser.add_argument('--revision', required=True)
-    parser.add_argument('--label', choices=['baseline', 'dependency', 'token', 'candidate'], default='candidate')
+    parser.add_argument('--label', choices=['baseline', 'dependency', 'token', 'property', 'candidate', 'response'], default='candidate')
     parser.add_argument('--virtual-dom-revision')
+    parser.add_argument('--response', action='store_true')
     args = parser.parse_args()
     editor = next(e for e in json.loads((ROOT / 'config/editors.lock.json').read_text()) if e['id'] == 'lvce')
     targets = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/packages/editor-worker/dist/editorWorkerMain.js'))
@@ -35,7 +38,13 @@ def main():
         try:
             shutil.copyfile(args.bundle, target)
             for repeat in range(1, 4):
-                result = dict(trial(editor, args.perf), repeat=repeat, diagnosticCandidate=args.revision)
+                options = {}
+                if args.response:
+                    os.environ['SELECTION_RESPONSE_EDITOR'] = 'lvce'
+                    os.environ['SELECTION_RESPONSE_DESTINATION'] = str(
+                        destination.parent.resolve() / f'candidate-response-{repeat}.json')
+                    options['capture_type'] = ResponseCapture
+                result = dict(trial(editor, args.perf, **options), repeat=repeat, diagnosticCandidate=args.revision)
                 output['trials'].append(result)
                 destination.write_text(json.dumps(output, indent=2) + '\n')
                 if (not result['valid'] or not selection_evidence_is_valid(result)

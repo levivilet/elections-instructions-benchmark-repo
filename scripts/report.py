@@ -38,6 +38,7 @@ def validate_result(data: dict, editor_id: str) -> dict:
         if (trial.get("cutoffAcknowledged") is not True or not trial.get("readiness")
                 or trial.get("diagnosticWarmup", False)
                 or trial.get("diagnosticCandidate")
+                or trial.get("diagnosticResponse", False)
                 or not selection_evidence_is_valid(trial)
                 or trial.get('displayBackend') != 'wayland'
                 or trial.get('inputDriver') != 'ydotool'

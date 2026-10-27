@@ -68,7 +68,7 @@ jobs:
         if: matrix.editor == 'lvce'
         with:
           repository: lvce-editor/virtual-dom
-          ref: d404c1bf0c5c2ec58e3407c0c5943477b03eb992
+          ref: 217a7ebc48c4e83c42d773cca0d76aa5e2893bbb
           path: .tmp/candidate-virtual-dom
       - uses: actions/setup-node@v6
         if: matrix.editor == 'lvce'
@@ -94,6 +94,11 @@ jobs:
           # Override only this compiled module, retaining the worker's locked
           # dependency tree. This unreleased diagnostic cannot enter the report.
           cp ../candidate-virtual-dom/dist/virtual-dom-worker/dist/parts/VirtualDomDiffTree/CompareNodes.js node_modules/@lvce-editor/virtual-dom-worker/dist/parts/VirtualDomDiffTree/CompareNodes.js
+          npm run build
+          cp .tmp/dist/dist/editorWorkerMain.js ../propertyWorkerMain.js
+          for module in DiffFlatTrees DiffTrees VirtualDomDiffTree; do
+            cp "../candidate-virtual-dom/dist/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js" "node_modules/@lvce-editor/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js"
+          done
           npm run build
       - uses: actions/checkout@v5
         if: matrix.editor == 'lvce'
@@ -128,7 +133,8 @@ jobs:
           BENCHMARK_ALLOCATION_PROFILE: '1'
           BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/candidate-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_CANDIDATE_REVISION: 694001f4c388e7a4099275092db5cce7e834f49e
-          BENCHMARK_VIRTUAL_DOM_REVISION: d404c1bf0c5c2ec58e3407c0c5943477b03eb992
+          BENCHMARK_VIRTUAL_DOM_REVISION: 217a7ebc48c4e83c42d773cca0d76aa5e2893bbb
+          BENCHMARK_PROPERTY_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/propertyWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_TOKEN_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/tokenWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_DEPENDENCY_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/dependency-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_BASELINE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/baseline-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}

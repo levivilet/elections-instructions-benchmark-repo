@@ -83,6 +83,9 @@ if [ "${1:-}" != --validate-input ]; then
   # can leave compositor input state from the preceding session. Every editor
   # trial still launches a new process tree with a fresh application profile.
   if [ "${BENCHMARK_DIAGNOSE:-0}" = 1 ]; then
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/response.py --editor "$1" --perf "$2"
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET,BENCHMARK_JAVASCRIPT_PROFILE,BENCHMARK_ALLOCATION_PROFILE \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
       python3 scripts/diagnose.py --editor "$1" --perf "$2"
@@ -99,6 +102,12 @@ if [ "${1:-}" != --validate-input ]; then
       python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_TOKEN_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --label token
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_PROPERTY_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --label property --virtual-dom-revision d404c1bf0c5c2ec58e3407c0c5943477b03eb992
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
       python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION"
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION" --label response --response
   fi
 fi
