@@ -44,7 +44,7 @@ class Capture:
                 self.fds.append(os.open(path, os.O_RDWR | os.O_NONBLOCK))
             self.log = (self.directory / 'perf.log').open('w')
             self.process = subprocess.Popen([
-                self.perf, 'stat', '-vv', '-a', '-e', 'instructions', '-G', self.group.name,
+                self.perf, 'stat', '-a', '-e', 'instructions', '-G', self.group.name,
                 '-x', ';', '-D', '-1', '--control', f'fd:{self.fds[0]},{self.fds[1]}',
                 ], pass_fds=tuple(self.fds),
                 stdout=subprocess.DEVNULL, stderr=self.log, start_new_session=True)
