@@ -27,6 +27,14 @@ class ProfileCapture(Capture):
     def start(self):
         if self.disabled_at is None:
             raise RuntimeError('profile must be disabled before selection starts')
+        destination = Path(os.environ['SELECTION_PROFILE_DESTINATION'])
+        destination.mkdir(parents=True)
+        self.cpu_log = (destination / 'javascript.log').open('w')
+        self.cpu_profiler = subprocess.Popen(
+            ['node', str(ROOT / 'scripts/profile-javascript.mjs'), str(destination / 'javascript')],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.cpu_log, text=True)
+        if self.cpu_profiler.stdout.readline().strip() != 'ready':
+            raise RuntimeError('JavaScript profiler failed to attach; see javascript.log')
         # Create the recorder after startup, so its initial metadata synthesis
         # sees the editor's existing processes, threads and executable maps.
         for name in ['control', 'ack']:
@@ -48,14 +56,31 @@ class ProfileCapture(Capture):
     def launch(self, command, environment, stdout, stderr, cwd=None):
         # Resolve V8 generated code in the sampled profile. This extra work is
         # deliberately restricted to diagnostic trials, never official counts.
-        command = [command[0], '--js-flags=--perf-basic-prof', *command[1:]]
+        command = [command[0], '--js-flags=--perf-basic-prof', '--remote-debugging-port=9222', *command[1:]]
         return super().launch(command, environment, stdout, stderr, cwd)
+
+    def __exit__(self, *args):
+        try:
+            if hasattr(self, 'cpu_profiler'):
+                if self.cpu_profiler.poll() is None:
+                    self.cpu_profiler.kill()
+                self.cpu_profiler.wait(timeout=5)
+                self.cpu_profiler.stdin.close()
+                self.cpu_profiler.stdout.close()
+            if hasattr(self, 'cpu_log'):
+                self.cpu_log.close()
+        finally:
+            super().__exit__(*args)
 
     def finish(self):
         if self.disabled_at is None:
             raise RuntimeError('profile has no acknowledged cutoff')
         destination = Path(os.environ['SELECTION_PROFILE_DESTINATION'])
-        destination.mkdir(parents=True)
+        destination.mkdir(parents=True, exist_ok=True)
+        self.cpu_profiler.stdin.write('\n')
+        self.cpu_profiler.stdin.flush()
+        if self.cpu_profiler.wait(timeout=30) != 0:
+            raise RuntimeError('JavaScript profiler failed to save; see javascript.log')
         processes = []
         for pid in self.pids():
             process = Path('/proc') / str(pid)
