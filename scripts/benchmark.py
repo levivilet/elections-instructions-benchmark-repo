@@ -154,9 +154,9 @@ def trial(editor, perf, zed_settle_seconds=DEFAULT_ZED_POST_OPEN_SETTLE_SECONDS,
                         time.sleep(.02)
                     time.sleep(10)
                     details.update(window=window, pids=pids, stage='settle')
-                    if editor['id'] in {'codemirror6', 'codemirror5', 'ace'}:
+                    if editor['id'] in {'basic-electron', 'codemirror6', 'codemirror5', 'ace'}:
                         title = visible_window(capture.pids())['name']
-                        name = {'codemirror6': 'CodeMirror 6', 'codemirror5': 'CodeMirror 5',
+                        name = {'basic-electron': 'Basic Electron Editor', 'codemirror6': 'CodeMirror 6', 'codemirror5': 'CodeMirror 5',
                                 'ace': 'Ace'}[editor['id']]
                         if title != f"{name} - {fixture.name}":
                             raise RuntimeError(f'{name} did not finish loading fixture {fixture.name}: {title!r}')

@@ -2,6 +2,7 @@ const textarea = document.querySelector('#editor')
 
 async function load() {
   textarea.value = await window.editor.read()
+  window.editor.ready()
 }
 
 async function save() {

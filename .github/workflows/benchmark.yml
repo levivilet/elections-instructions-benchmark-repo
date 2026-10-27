@@ -81,7 +81,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - run: python3 -m unittest discover -s tests
+      - run: |
+          python3 -m unittest discover -s tests
+          node --test tests/electron-startup.cjs
       - uses: actions/download-artifact@v5
         if: needs.benchmark.result == 'success'
         with:
