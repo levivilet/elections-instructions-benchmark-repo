@@ -1,4 +1,5 @@
 const {app, BrowserWindow, ipcMain} = require('electron')
+const trace = require('../scripts/electron-startup-trace.cjs')(app)
 const fs = require('node:fs/promises')
 const path = require('node:path')
 
@@ -43,5 +44,11 @@ function createWindow() {
   window.once('ready-to-show', () => window.show())
 }
 
-app.whenReady().then(() => createWindow())
+app.whenReady().then(() => {
+  trace('when-ready-resolved')
+  createWindow()
+}).catch((error) => {
+  trace('startup-error', {message: error.stack})
+  app.exit(1)
+})
 app.on('window-all-closed', () => app.quit())
