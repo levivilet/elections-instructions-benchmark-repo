@@ -58,6 +58,10 @@ class BenchmarkTest(unittest.TestCase):
                 installed = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/packages/editor-worker/dist/editorWorkerMain.js'
                 installed.parent.mkdir(parents=True)
                 installed.write_text('original')
+                renderer = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/packages/renderer-worker/dist/rendererWorkerMain.js'
+                renderer.parent.mkdir(parents=True)
+                renderer.write_text(candidate.POINTER_RENDER_ANCHOR)
+                pointer_observed = []
                 bundle = root / 'candidate.js'
                 bundle.write_text('candidate')
                 control = root / 'control.js'
@@ -65,25 +69,35 @@ class BenchmarkTest(unittest.TestCase):
                 observed = []
                 def measure(*args, **kwargs):
                     observed.append(installed.read_text())
+                    pointer_observed.append('Editor.handleMouseDownAndRender' in renderer.read_text())
                     if fail and len(observed) == 3:
                         raise RuntimeError('measurement failed')
                     return trial()
                 argv = ['candidate.py', '--perf', 'test', '--bundle', str(bundle), '--revision', 'candidate-sha',
                         '--label', 'paired-candidate', '--control-bundle', str(control), '--control-revision', 'control-sha',
-                        '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff']
+                        '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
+                        '--pointer-render', '--renderer-revision', 'reviewed-renderer']
                 with contextlib.chdir(root), patch.object(candidate, 'ROOT', root), \
                         patch.object(candidate, 'trial', side_effect=measure), patch.object(sys, 'argv', argv):
                     with self.assertRaises(RuntimeError) if fail else contextlib.nullcontext():
                         candidate.main()
                 self.assertEqual(installed.read_text(), 'original')
+                self.assertEqual(renderer.read_text(), candidate.POINTER_RENDER_ANCHOR)
                 if not fail:
                     self.assertEqual(observed, ['control', 'candidate', 'candidate', 'control', 'control', 'candidate'])
+                    self.assertEqual(pointer_observed, [False, True, True, False, False, True])
                     for label, revision in [('paired-candidate', 'candidate-sha'), ('paired-flat', 'control-sha')]:
                         output = json.loads((root / f'results/diagnostics/{label}.json').read_text())
                         self.assertEqual(output['workerRevision'], revision)
                         self.assertEqual(output['virtualDomRevision'], 'new-diff' if label == 'paired-candidate' else 'old-diff')
+                        self.assertEqual(output['pointerRender'], label == 'paired-candidate')
                         self.assertEqual(len(output['trials']), 3)
                         self.assertEqual(len(output['sequence']), 6)
+
+    def test_pointer_renderer_rejects_unmatched_or_ambiguous_build_output(self):
+        for source in ['', candidate.POINTER_RENDER_ANCHOR * 2]:
+            with self.assertRaisesRegex(RuntimeError, 'expected one pinned'):
+                candidate.pointer_renderer(source)
 
     def test_only_bundled_editor_apps_are_built_during_install(self):
         self.assertEqual(BUILD_APPS, {'codemirror-electron', 'codemirror5-electron', 'ace-electron'})

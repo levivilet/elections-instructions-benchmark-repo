@@ -13,6 +13,22 @@ from diagnose import ProfileCapture
 from response import ResponseCapture
 
 
+POINTER_RENDER_ANCHOR = """      await actualInvoke(fullId, editor.uid, ...restArgs);
+      return renderPendingEditors(editor, preserveFocus);"""
+
+
+def pointer_renderer(content):
+    # Backport only the reviewed pointer-call change into the pinned release.
+    # Fail closed if its build output changes; never silently compare two controls.
+    if content.count(POINTER_RENDER_ANCHOR) != 1:
+        raise RuntimeError('expected one pinned renderer pointer-call anchor')
+    return content.replace(POINTER_RENDER_ANCHOR, """      if (fullId === "Editor.handleMouseDown" && !preserveFocus && getEditorUids(editor).size === 1) {
+        const commands = await actualInvoke("Editor.handleMouseDownAndRender", editor.uid, ...restArgs);
+        return { ...editor, commands };
+      }
+""" + POINTER_RENDER_ANCHOR)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--perf', required=True)
@@ -20,6 +36,8 @@ def main():
     parser.add_argument('--revision', required=True)
     parser.add_argument('--label', choices=['baseline', 'dependency', 'token', 'property', 'flat', 'row', 'paired-candidate', 'paired-row', 'candidate', 'response', 'allocations', 'native', 'cpu'], default='candidate')
     parser.add_argument('--virtual-dom-revision')
+    parser.add_argument('--pointer-render', action='store_true')
+    parser.add_argument('--renderer-revision')
     parser.add_argument('--control-bundle', type=Path)
     parser.add_argument('--control-revision')
     parser.add_argument('--control-virtual-dom-revision')
@@ -31,17 +49,31 @@ def main():
     args = parser.parse_args()
     if args.control_bundle and (not args.control_revision or args.response or args.allocation_profile or args.native_profile or args.cpu_profile):
         parser.error('paired counts require a control revision and no observer')
+    if args.pointer_render and not args.renderer_revision:
+        parser.error('pointer renderer requires its reviewed source revision')
     editor = next(e for e in json.loads((ROOT / 'config/editors.lock.json').read_text()) if e['id'] == 'lvce')
     targets = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/packages/editor-worker/dist/editorWorkerMain.js'))
     if len(targets) != 1:
         raise RuntimeError(f'expected one installed editor bundle, got {targets}')
     target = targets[0]
-    plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision)]
+    renderer_target = None
+    renderer_original = renderer_candidate = None
+    if args.pointer_render:
+        renderers = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/packages/renderer-worker/dist/rendererWorkerMain.js'))
+        if len(renderers) != 1:
+            raise RuntimeError(f'expected one installed renderer bundle, got {renderers}')
+        renderer_target = renderers[0]
+        renderer_original = renderer_target.read_bytes()
+        renderer_candidate = pointer_renderer(renderer_original.decode()).encode()
+    plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render)]
     if args.control_bundle:
-        plans.insert(0, ('paired-flat', args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision))
+        plans.insert(0, ('paired-flat', args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision, False))
     sequence = []
     outputs = {label: {'editor': editor, 'protocol': PROTOCOL, 'workerRevision': revision,
                        'virtualDomRevision': virtual_dom_revision,
+                       'pointerRender': pointer_render,
+                       'rendererPatchRevision': args.renderer_revision if pointer_render else None,
+                       'rendererBundleSha256': hashlib.sha256(renderer_candidate if pointer_render else renderer_original).hexdigest() if renderer_original else None,
                        'allocationProfiling': args.allocation_profile,
                        'nativeProfiling': args.native_profile,
                        'cpuProfiling': args.cpu_profile,
@@ -49,7 +81,7 @@ def main():
                        'sequence': sequence,
                        'note': 'Diagnostic candidate, not the pinned release; excluded from the official report.',
                        'trials': []}
-               for label, bundle, revision, virtual_dom_revision in plans}
+               for label, bundle, revision, virtual_dom_revision, pointer_render in plans}
     destination = Path('results/diagnostics')
     destination.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='selection-candidate-backup-') as directory:
@@ -58,8 +90,10 @@ def main():
         try:
             for repeat in range(1, 4):
                 ordered = plans if repeat % 2 else list(reversed(plans))
-                for label, bundle, revision, _virtual_dom_revision in ordered:
+                for label, bundle, revision, _virtual_dom_revision, pointer_render in ordered:
                     shutil.copyfile(bundle, target)
+                    if renderer_target:
+                        renderer_target.write_bytes(renderer_candidate if pointer_render else renderer_original)
                     options = {}
                     if args.response:
                         os.environ['SELECTION_RESPONSE_EDITOR'] = 'lvce'
@@ -84,6 +118,8 @@ def main():
                         raise RuntimeError(f'invalid candidate trial: {result}')
         finally:
             shutil.copyfile(backup, target)
+            if renderer_target:
+                renderer_target.write_bytes(renderer_original)
 
 
 if __name__ == '__main__':
