@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
-from wayland import (clipboard_after_copy, ctrl, double_click_command,
+from wayland import (click, clipboard_after_copy, ctrl, double_click_command,
                      focus, focused_window, move_pointer, read_clipboard,
                      set_clipboard, visible_window)
 
@@ -80,9 +80,13 @@ def main():
         x, y = layout['target']
         focus(window)
         time.sleep(.2)
-        # Compositor focus plus the client's initial text focus is sufficient.
-        # Exercise exactly two button presses, without priming GTK's separate
-        # multi-press gesture state with a third focus click.
+        # Establish native pointer focus separately: a cold GTK client can
+        # consume the first injected press during activation. Keep this click
+        # spatially separate and beyond GTK's multi-press interval, so the
+        # following double-click cannot become a triple-click.
+        move_pointer(window, x + 80, y)
+        click()
+        time.sleep(.6)
         move_pointer(window, x, y)
         focused = focused_window([child.pid])
         if not focused:
