@@ -24,6 +24,7 @@ class ProfileCapture(Capture):
             self.process = subprocess.Popen([
                 self.perf, 'record', '-a', '-e', 'instructions', '-c', '100000',
                 '-G', self.group.name, '--call-graph', 'dwarf,8192', '-D', '-1',
+                '--tail-synthesize',
                 '--control', f'fd:{self.fds[0]},{self.fds[1]}',
                 '-o', str(self.directory / 'perf.data'),
             ], pass_fds=tuple(self.fds), stdout=subprocess.DEVNULL,
@@ -44,14 +45,27 @@ class ProfileCapture(Capture):
     def finish(self):
         if self.disabled_at is None:
             raise RuntimeError('profile has no acknowledged cutoff')
+        destination = Path(os.environ['SELECTION_PROFILE_DESTINATION'])
+        destination.mkdir(parents=True)
+        processes = []
+        for pid in self.pids():
+            process = Path('/proc') / str(pid)
+            try:
+                processes.append({'pid': pid, 'command': process.joinpath('cmdline').read_bytes().decode().split('\0'),
+                                  'threads': {task.name: (task / 'comm').read_text().strip()
+                                              for task in (process / 'task').iterdir()}})
+            except FileNotFoundError:
+                continue
+        (destination / 'processes.json').write_text(json.dumps(processes, indent=2) + '\n')
+        # Startup was excluded while counters were disabled. Synthesize the
+        # surviving processes' comm/mmap records at the tail so their sampled
+        # instructions can still be attributed and unwound.
         self.process.send_signal(signal.SIGINT)
         self.process.wait(timeout=10)
         self.log.flush()
         # perf finalizes data, then re-raises SIGINT on some supported versions.
         if self.process.returncode not in (0, -signal.SIGINT):
             raise RuntimeError((self.directory / 'perf.log').read_text())
-        destination = Path(os.environ['SELECTION_PROFILE_DESTINATION'])
-        destination.mkdir(parents=True)
         # Resolve symbols while the editor and its temporary mapped files live.
         for name, args in [
             ('report.txt', ['report', '--stdio', '--no-children', '--percent-limit', '0.5',
