@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import signal
 import subprocess
 
@@ -63,7 +64,7 @@ class ProfileCapture(Capture):
         if not (destination / 'stacks.txt').read_text().strip():
             raise RuntimeError('instruction profile contains no samples')
         for name in ['perf.data', 'perf.log']:
-            (self.directory / name).replace(destination / name)
+            shutil.move(str(self.directory / name), str(destination / name))
         return {'diagnosticProfile': str(destination), 'cutoffAcknowledged': True}
 
 
