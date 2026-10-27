@@ -44,6 +44,7 @@ def main():
     parser.add_argument('--renderer-revision')
     parser.add_argument('--control-bundle', type=Path)
     parser.add_argument('--control-label', default='paired-flat')
+    parser.add_argument('--control-pointer-render', action='store_true')
     parser.add_argument('--control-revision')
     parser.add_argument('--control-virtual-dom-revision')
     observers = parser.add_mutually_exclusive_group()
@@ -72,7 +73,7 @@ def main():
         renderer_candidate = pointer_renderer(renderer_original.decode()).encode()
     plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render)]
     if args.control_bundle:
-        plans.insert(0, (args.control_label, args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision, args.pointer_render if args.label == 'without-status' else False))
+        plans.insert(0, (args.control_label, args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision, args.control_pointer_render or (args.pointer_render if args.label == 'without-status' else False)))
     sequence = []
     outputs = {label: {'editor': editor, 'protocol': PROTOCOL, 'workerRevision': revision,
                        'virtualDomRevision': virtual_dom_revision,

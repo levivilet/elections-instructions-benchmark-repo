@@ -35,7 +35,7 @@ socket.addEventListener('message', ({ data }) => {
 })
 const selector = editor === 'lvce' ? '.EditorSelection' : '.CodeMirror-selected'
 const install = await send('Runtime.evaluate', { expression: `(() => {
-  const result = { input: null, mutation: null, frame: null, rectangles: [], inputTrusted: false };
+  const result = { input: null, mutation: null, frame: null, rectangles: [], inputTrusted: false, statusMutation: null, statusText: null };
   window.__selectionResponse = result;
   document.addEventListener('mousedown', (event) => {
     if (event.detail === 2 && result.input === null) {
@@ -56,6 +56,17 @@ const install = await send('Runtime.evaluate', { expression: `(() => {
     requestAnimationFrame(() => {result.frame = performance.now();});
   });
   observer.observe(document.documentElement, {childList: true, attributes: true, subtree: true});
+  if (${JSON.stringify(editor)} === 'lvce') {
+    const statusObserver = new MutationObserver(() => {
+      if (result.input === null || result.statusMutation !== null) return;
+      const statusText = document.querySelector('[name="EditorPosition"]')?.textContent || '';
+      if (!statusText.includes('(15 selected)')) return;
+      result.statusMutation = performance.now();
+      result.statusText = statusText;
+      statusObserver.disconnect();
+    });
+    statusObserver.observe(document.documentElement, {childList: true, characterData: true, attributes: true, subtree: true});
+  }
   return true;
 })()`, returnByValue: true })
 if (install.exceptionDetails || install.result.value !== true) throw new Error(JSON.stringify(install))
@@ -70,7 +81,13 @@ if (!observation || ![observation.input, observation.mutation, observation.frame
     || observation.mutation < observation.input || observation.frame < observation.mutation) {
   throw new Error(`Selection response was not observed: ${JSON.stringify(observation)}`)
 }
+if (editor === 'lvce' && (!Number.isFinite(observation.statusMutation)
+    || observation.statusMutation < observation.input
+    || observation.statusMutation - observation.input >= 1000)) {
+  throw new Error(`Selected-word status did not update promptly: ${JSON.stringify(observation)}`)
+}
 await writeFile(destination, JSON.stringify({ ...observation,
+  eventToStatusMilliseconds: Number.isFinite(observation.statusMutation) ? observation.statusMutation - observation.input : null,
   eventToMutationMilliseconds: observation.mutation - observation.input,
   eventToFrameMilliseconds: observation.frame - observation.input,
   note: 'Diagnostic page-clock observation; DOM and frame callbacks do not measure compositor presentation.',
