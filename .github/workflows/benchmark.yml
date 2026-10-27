@@ -58,12 +58,43 @@ jobs:
           bash scripts/install-input.sh
       - name: Install pinned ARM artifact
         run: python3 scripts/install.py --editors "${{ matrix.editor }}"
+      - uses: actions/checkout@v5
+        if: matrix.editor == 'lvce'
+        with:
+          repository: lvce-editor/editor-worker
+          ref: 759384d6c804cc2d509ed7ad4c0ab29c1933cd02
+          path: .tmp/candidate-worker
+      - uses: actions/setup-node@v6
+        if: matrix.editor == 'lvce'
+        with:
+          node-version-file: .tmp/candidate-worker/.nvmrc
+      - name: Build identified diagnostic candidate
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/candidate-worker
+        run: |
+          nice npm ci
+          npm run build
+      - uses: actions/checkout@v5
+        if: matrix.editor == 'lvce'
+        with:
+          repository: lvce-editor/editor-worker
+          ref: a45322d60d92
+          path: .tmp/baseline-worker
+      - name: Build matching source baseline
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/baseline-worker
+        run: |
+          nice npm ci
+          npm run build
       - name: Measure three fresh-profile word selections
         env:
           BENCHMARK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BENCHMARK_COMMIT: ${{ github.sha }}
           BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS: ${{ github.event.inputs.zed_post_open_settle_seconds || '10' }}
           BENCHMARK_DIAGNOSE: ${{ (matrix.editor == 'lvce' || matrix.editor == 'codemirror5') && '1' || '0' }}
+          BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/candidate-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
+          BENCHMARK_CANDIDATE_REVISION: 759384d6c804cc2d509ed7ad4c0ab29c1933cd02
+          BENCHMARK_BASELINE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/baseline-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
         run: |
           echo "Zed post-open settling: ${BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS}s"
           PERF=$(find -L /usr/lib/linux-tools -name perf -type f | sort | tail -n 1)

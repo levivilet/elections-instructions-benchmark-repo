@@ -164,6 +164,7 @@ class BenchmarkTest(unittest.TestCase):
         data = result(editor)
         report.validate_result(data, editor['id'])
         invalid = [dict(cutoffAcknowledged=False), dict(inputToCutoffSeconds=.1),
+                   dict(diagnosticCandidate='unreleased-worker'),
                    dict(instructions=101), dict(valid=False), dict(clipboardAfter='stale'),
                    dict(focusPid=999), dict(selection=None), dict(fixtureUnchanged=False),
                    dict(displayBackend='x11'), dict(inputDriver='xdotool'),
