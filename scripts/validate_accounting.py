@@ -20,6 +20,9 @@ def measure(mode, after=0, harness=False):
             log = d / 'perf.log'
             if log.exists():
                 Path('results/accounting-failure.log').write_text(log.read_text())
+            snapshot = d / 'perf-control-failure.json'
+            if snapshot.exists():
+                Path('results/perf-control-failure.json').write_text(snapshot.read_text())
             raise
 
 

@@ -27,20 +27,22 @@ function createWindow() {
   const window = new BrowserWindow({
     width: 1280,
     height: 720,
-    show: false,
-    title,
+    // Native mapping must not wait for a hidden window to receive a first paint.
+    show: true,
+    title: 'Basic Electron Editor - Loading document',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       preload: path.join(__dirname, 'preload.js'),
     },
   })
-  window.on('page-title-updated', (event) => {
-    event.preventDefault()
-    window.setTitle(title)
+  window.on('page-title-updated', (event) => event.preventDefault())
+  ipcMain.on('document-ready', (event) => {
+    if (event.sender === window.webContents) {
+      window.setTitle(title)
+    }
   })
   window.loadFile(path.join(__dirname, 'index.html'))
-  window.once('ready-to-show', () => window.show())
 }
 
 app.whenReady().then(() => createWindow())

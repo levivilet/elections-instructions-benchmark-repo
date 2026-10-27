@@ -27,7 +27,8 @@ function createWindow() {
   const window = new BrowserWindow({
     width: 1280,
     height: 720,
-    show: false,
+    // Native mapping must not wait for a hidden window to receive a first paint.
+    show: true,
     title: 'Ace - Loading document',
     webPreferences: {
       contextIsolation: true,
@@ -42,7 +43,6 @@ function createWindow() {
     }
   })
   window.loadFile(path.join(__dirname, 'index.html'))
-  window.once('ready-to-show', () => window.show())
 }
 
 app.whenReady().then(() => createWindow())

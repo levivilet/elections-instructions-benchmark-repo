@@ -1,5 +1,6 @@
 """Cgroup-scoped hardware counters; the controller stays outside the cgroup."""
 import errno
+import json
 import os
 from pathlib import Path
 import select
@@ -47,15 +48,35 @@ class Capture:
                 '-x', ';', '-D', '-1', '--control', f'fd:{self.fds[0]},{self.fds[1]}',
                 ], pass_fds=tuple(self.fds),
                 stdout=subprocess.DEVNULL, stderr=self.log, start_new_session=True)
+            # Cold executable/library pages can block perf startup on runner IO.
+            # Wait for its control loop while -D -1 keeps counters disabled;
+            # measurement commands retain their short acknowledgement deadline.
+            self.control('ping', timeout=30)
             self.control('enable')
             return self
         except BaseException:
             self.__exit__(None, None, None)
             raise
 
-    def control(self, command):
+    def control(self, command, timeout=5):
         os.write(self.fds[0], (command + '\n').encode())
-        if not select.select([self.fds[1]], [], [], 5)[0]:
+        if not select.select([self.fds[1]], [], [], timeout)[0]:
+            # Diagnostic snapshot before cleanup can erase an early exit/hang.
+            snapshot = {'command': command, 'monotonicSeconds': time.monotonic(),
+                        'returncode': self.process.poll(), 'fds': self.fds}
+            process = Path('/proc') / str(self.process.pid)
+            for name in ['status', 'wchan', 'stack', 'syscall']:
+                try:
+                    snapshot[name] = (process / name).read_text()
+                except OSError as error:
+                    snapshot[name] = str(error)
+            try:
+                snapshot['processFds'] = {fd.name: os.readlink(fd) for fd in (process / 'fd').iterdir()}
+            except OSError as error:
+                snapshot['processFds'] = str(error)
+            snapshot_path = self.directory / 'perf-control-failure.json'
+            if not snapshot_path.exists():
+                snapshot_path.write_text(json.dumps(snapshot, indent=2))
             raise RuntimeError(f'perf did not acknowledge {command}')
         # perf 6.8 writes sizeof("ack\n"), including the C NUL terminator.
         if os.read(self.fds[1], 256) not in (b'ack\n', b'ack\n\x00'):
@@ -64,7 +85,7 @@ class Capture:
             raise RuntimeError('perf exited before cutoff')
 
     def launch(self, command, environment, stdout, stderr, cwd=None):
-        # Only the launcher child enters the cgroup; controller, X server,
+        # Only the launcher child enters the cgroup; controller, Wayland compositor and input daemons,
         # desktop, readiness polling and perf remain outside it.
         def enter_group():
             (self.group / 'cgroup.procs').write_text(str(os.getpid()))

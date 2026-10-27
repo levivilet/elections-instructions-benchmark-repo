@@ -12,9 +12,10 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 from benchmark import (CLIPBOARD_SENTINEL_PREFIX, DOUBLE_CLICK_DELAY_MS, FIXTURE_CONTENT,
                        FIXTURE_LINE, FIXTURE_WORDS_PER_LINE,
                        PROTOCOL, RESPONSE_WINDOW_SECONDS, SELECTION_TEXT, command_for,
-                       double_click_command, focus_click_coordinates, is_main_window,
+                       double_click_command, focus_click_coordinates,
                        clipboard_after_copy, selection_coordinates, selection_evidence_is_valid,
                        zed_post_open_settle_seconds)
+from wayland import main_windows, move_pointer
 from counters import Capture, parse_counter
 import report
 from install import BUILD_APPS
@@ -32,7 +33,10 @@ def trial(count=100):
                 doubleClickDelayMilliseconds=DOUBLE_CLICK_DELAY_MS,
                 documentContentSha256='b' * 64,
                 fixtureContentSha256='b' * 64, fixtureUnchanged=True,
-                focusPid=12, pidsAtInput=[12, 14], readiness={'windowId': '1'},
+                focusPid=12, pidsAtInput=[12, 14],
+                readiness={'id': 1, 'pid': 12, 'shell': 'xdg_shell'},
+                displayBackend='wayland', inputDriver='ydotool',
+                focusedNativeWindow={'id': 1, 'pid': 12, 'shell': 'xdg_shell', 'focused': True},
                 cutoffAcknowledged=True,
                 rawCounter=f'{count};;instructions;selection-test;1234;100.00;;\n')
 
@@ -53,9 +57,9 @@ class BenchmarkTest(unittest.TestCase):
         self.assertLess(len(FIXTURE_LINE), 160)
         self.assertGreater(FIXTURE_CONTENT.count(SELECTION_TEXT), 100)
         self.assertEqual(double_click_command(), [
-            'xdotool', 'click', '--clearmodifiers', '--repeat', '2',
-            '--delay', str(DOUBLE_CLICK_DELAY_MS), '1'])
-        self.assertEqual(PROTOCOL['action'], 'one X11 double-click selecting a word in a prepared plain-text document')
+            'ydotool', 'click', '--repeat', '2', '--next-delay',
+            str(DOUBLE_CLICK_DELAY_MS // 2), '0xC0'])
+        self.assertEqual(PROTOCOL['action'], 'one native Wayland double-click via ydotool selecting a word in a prepared plain-text document')
         self.assertEqual(PROTOCOL['responseWindowSeconds'], RESPONSE_WINDOW_SECONDS)
         self.assertIn('pointer positioning', PROTOCOL['excluded'])
         for editor in report.EDITORS:
@@ -101,20 +105,35 @@ class BenchmarkTest(unittest.TestCase):
                 self.assertFalse(selection_evidence_is_valid(broken))
 
     def test_clipboard_copy_waits_for_the_new_selection(self):
-        with patch('benchmark.subprocess.check_output', side_effect=['stale', SELECTION_TEXT]) as read_clipboard, \
-                patch('benchmark.time.sleep'):
+        with patch('wayland.subprocess.check_output', side_effect=['stale', SELECTION_TEXT]) as read_clipboard, \
+                patch('wayland.time.sleep'):
             self.assertEqual(clipboard_after_copy('stale'), SELECTION_TEXT)
         self.assertEqual(read_clipboard.call_count, 2)
 
-    def test_main_window_type_defaults_and_rejections(self):
-        mapped = 'WM_STATE(WM_STATE):\n    window state: Normal\n'
-        missing = '_NET_WM_WINDOW_TYPE:  not found.\nWM_TRANSIENT_FOR:  not found.\n'
-        self.assertTrue(is_main_window(mapped + missing))
-        self.assertTrue(is_main_window(mapped + '_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_NORMAL'))
-        self.assertFalse(is_main_window(missing))
-        self.assertFalse(is_main_window(mapped + '_NET_WM_WINDOW_TYPE: not found.\nWM_TRANSIENT_FOR(WINDOW): window id # 0x123'))
-        for kind in ['SPLASH', 'DIALOG', 'UTILITY', 'MENU']:
-            self.assertFalse(is_main_window(mapped + f'_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_{kind}'))
+    def test_native_window_discovery_rejects_xwayland_hidden_and_unrelated_pids(self):
+        native = dict(id=1, pid=12, shell='xdg_shell', visible=True, type='con')
+        floating = dict(native, id=2)
+        tree = dict(nodes=[dict(nodes=[native])], floating_nodes=[floating])
+        self.assertEqual(main_windows(tree, [12]), [native, floating])
+        for changes in [dict(shell='xwayland'), dict(visible=False), dict(pid=99),
+                        dict(type='workspace'), dict(window_properties={'transient_for': 100})]:
+            with self.subTest(changes=changes):
+                self.assertEqual(main_windows(dict(nodes=[dict(native, **changes)]), [12]), [])
+
+    def test_every_electron_editor_requires_native_wayland(self):
+        for editor in report.EDITORS:
+            if editor['id'] in {'lvce', 'vscode', 'basic-electron', 'codemirror6', 'codemirror5', 'ace'}:
+                with self.subTest(editor=editor['id']):
+                    command = command_for(editor, Path('/tmp/profile'), Path('/tmp/fixture'))
+                    self.assertIn('--ozone-platform=wayland', command)
+                    self.assertNotIn('--ozone-platform=x11', command)
+
+    def test_pointer_setup_uses_acknowledged_compositor_pixel_coordinates(self):
+        with patch('wayland.sway', return_value=[{'success': True}]) as ipc:
+            move_pointer({'rect': {'x': 10, 'y': 20}}, 200, 160)
+            ipc.assert_called_once_with('seat seat0 cursor set 210 180')
+        with patch('wayland.sway', return_value=[{'success': False}]), self.assertRaises(RuntimeError):
+            move_pointer({'rect': {'x': 0, 'y': 0}}, 200, 160)
 
     def test_counter_control_and_multiplex_validation(self):
         for ack in [b'ack\n', b'ack\n\x00', b'wrong\n']:
@@ -146,12 +165,20 @@ class BenchmarkTest(unittest.TestCase):
         report.validate_result(data, editor['id'])
         invalid = [dict(cutoffAcknowledged=False), dict(inputToCutoffSeconds=.1),
                    dict(instructions=101), dict(valid=False), dict(clipboardAfter='stale'),
-                   dict(focusPid=999), dict(selection=None), dict(fixtureUnchanged=False)]
+                   dict(focusPid=999), dict(selection=None), dict(fixtureUnchanged=False),
+                   dict(displayBackend='x11'), dict(inputDriver='xdotool'),
+                   dict(focusedNativeWindow={'shell': 'xwayland', 'focused': True, 'pid': 12}),
+                   dict(focusedNativeWindow={'shell': 'xdg_shell', 'focused': False, 'pid': 12}),
+                   dict(readiness={'shell': 'xwayland'})]
         for changes in invalid:
             broken = copy.deepcopy(data)
             broken['trials'][0].update(changes)
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 report.validate_result(broken, editor['id'])
+        old = copy.deepcopy(data)
+        old['protocol']['version'] = 4
+        with self.assertRaises(ValueError):
+            report.validate_result(old, editor['id'])
         data['trials'].pop()
         with self.assertRaises(ValueError):
             report.validate_result(data, editor['id'])
@@ -187,6 +214,8 @@ class BenchmarkTest(unittest.TestCase):
             page = (root / 'index.html').read_text()
             self.assertIn('Median instructions per word selection', page)
             self.assertIn('Download JSON', page)
+            self.assertIn('native Wayland double-click sent by ydotool', page)
+            self.assertEqual(payload['editors'][0]['protocol']['version'], 5)
 
 
 if __name__ == '__main__':

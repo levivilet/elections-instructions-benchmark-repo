@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 import statistics
 from counters import parse_counter
-from benchmark import RESPONSE_WINDOW_SECONDS, selection_evidence_is_valid
+from benchmark import PROTOCOL, RESPONSE_WINDOW_SECONDS, selection_evidence_is_valid
 
 ROOT = Path(__file__).resolve().parent.parent
 EDITORS = json.loads((ROOT / "config/editors.lock.json").read_text())
@@ -18,6 +18,8 @@ def validate_result(data: dict, editor_id: str) -> dict:
     """Reject incomplete measurements instead of interpreting them as zero."""
     if not isinstance(data, dict) or not isinstance(data.get("editor"), dict) or data["editor"].get("id") != editor_id:
         raise ValueError(f"{editor_id}: result has the wrong editor identity")
+    if data.get('protocol') != PROTOCOL:
+        raise ValueError(f'{editor_id}: result does not use the current native Wayland protocol')
     trials = data.get("trials")
     if not isinstance(trials, list) or len(trials) < 3:
         raise ValueError(f"{editor_id}: result has no trials")
@@ -37,6 +39,12 @@ def validate_result(data: dict, editor_id: str) -> dict:
                 or trial.get("diagnosticWarmup", False)
                 or trial.get("diagnosticCandidate")
                 or not selection_evidence_is_valid(trial)
+                or trial.get('displayBackend') != 'wayland'
+                or trial.get('inputDriver') != 'ydotool'
+                or trial.get('readiness', {}).get('shell') != 'xdg_shell'
+                or trial.get('focusedNativeWindow', {}).get('shell') != 'xdg_shell'
+                or trial.get('focusedNativeWindow', {}).get('focused') is not True
+                or trial.get('focusedNativeWindow', {}).get('pid') != trial.get('focusPid')
                 or not isinstance(trial.get("focusPid"), int)
                 or trial.get("focusPid") not in trial.get("pidsAtInput", [])
                 or parse_counter(trial.get("rawCounter", "")) != trial["instructions"]):
@@ -182,8 +190,8 @@ th{{background:#e8f1fa}}code{{overflow-wrap:anywhere}}a{{color:#0759a5}}
 .stem{{stroke:#4780ad;stroke-width:2}}.marker{{fill:#0759a5;stroke:white;stroke-width:2}}.value{{font-weight:600}}
 </style></head><body><main><h1>Selection instructions benchmark</h1>
 <p>Latest complete run: <a href="{safe_run_url}">GitHub Actions run</a> · commit <code>{safe_commit}</code></p>
-<p class="note">Retired hardware instructions are measured for an X11 double-click that selects <code>selectiontarget</code> in a prepared plain-text document. Counters are enabled immediately before double-click dispatch and disabled after a fixed one-second response window. The editor and its descendants are counted; launch, fixture setup, focus, pointer positioning, the input driver, selection verification and cleanup are excluded. Background work during the response window is included. Each trial uses a fresh profile, installs and verifies a stale-clipboard sentinel before counting, then requires the copied selection to match the target and the document to remain unchanged. Each value below is one trial; the summary is the median of three. Raw counters, exact boundaries, host and protocol metadata are available in each downloadable JSON file.</p>
-<p>The Linux ARM64 matrix covers LVCE, VS Code, Zed, Lapce, Geany, Basic Electron, CodeMirror 6, CodeMirror 5 and Ace in Electron, the supported ARM artifact subset of the reference desktop editor matrix. CodeMirror 5 uses plain text mode without line numbers or extensions; Ace uses plain text mode, the TextMate theme, no gutter and disabled workers.</p>
+<p class="note">Retired hardware instructions are measured for a native Wayland double-click sent by ydotool that selects <code>selectiontarget</code> in a prepared plain-text document. Counters are enabled immediately before double-click dispatch and disabled after a fixed one-second response window. The editor and its descendants are counted; launch, fixture setup, focus, pointer positioning, the input driver, selection verification and cleanup are excluded. Background work during the response window is included. Each trial uses a fresh profile, installs and verifies a stale-clipboard sentinel before counting, then requires the copied selection to match the target and the document to remain unchanged. Each value below is one trial; the summary is the median of three. Raw counters, exact boundaries, host and protocol metadata are available in each downloadable JSON file.</p>
+<p>The Linux ARM64 matrix covers LVCE, VS Code, Zed, Lapce, Basic Electron, CodeMirror 6, CodeMirror 5 and Ace in Electron, the supported ARM artifact subset of the reference desktop editor matrix. CodeMirror 5 uses plain text mode without line numbers or extensions; Ace uses plain text mode, the TextMate theme, no gutter and disabled workers.</p>
 <p>All {len(entries)} editors completed with valid measurements.</p>
 <section aria-labelledby="chart-heading"><h2 id="chart-heading">Median instructions per word selection by editor</h2>
 <p>Editors are ordered by median instruction count, lowest first. Each marker uses the same vertical scale; lower values appear closer to zero at the bottom. Scroll the chart horizontally on narrow screens.</p>
