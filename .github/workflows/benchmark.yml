@@ -70,6 +70,12 @@ jobs:
           repository: lvce-editor/virtual-dom
           ref: 9b271c2bf2f0ece8e193eaeae76761c85776c8c1
           path: .tmp/candidate-virtual-dom
+      - uses: actions/checkout@v5
+        if: matrix.editor == 'lvce'
+        with:
+          repository: lvce-editor/virtual-dom
+          ref: 4c00282f940199629d6f440e7afb43369b76ba1a
+          path: .tmp/skip-virtual-dom
       - uses: actions/setup-node@v6
         if: matrix.editor == 'lvce'
         with:
@@ -84,6 +90,12 @@ jobs:
       - name: Build identified virtual DOM diagnostic
         if: matrix.editor == 'lvce'
         working-directory: .tmp/candidate-virtual-dom
+        run: |
+          nice npm ci
+          npm run build
+      - name: Build unchanged-subtree diagnostic
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/skip-virtual-dom
         run: |
           nice npm ci
           npm run build
@@ -130,6 +142,11 @@ jobs:
             cp "../candidate-virtual-dom/dist/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js" "node_modules/@lvce-editor/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js"
           done
           npm run build
+          cp .tmp/dist/dist/editorWorkerMain.js ../monospaceControlWorkerMain.js
+          for module in CompareNodes DiffFlatTrees DiffTrees VirtualDomDiffTree; do
+            cp "../skip-virtual-dom/dist/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js" "node_modules/@lvce-editor/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js"
+          done
+          npm run build
       - uses: actions/checkout@v5
         if: matrix.editor == 'lvce'
         with:
@@ -163,6 +180,8 @@ jobs:
           BENCHMARK_ALLOCATION_PROFILE: '1'
           BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/monospace-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_CANDIDATE_REVISION: 8d2a6fbda45133b75b49350dfe8d1a104bfce10d
+          BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION: 4c00282f940199629d6f440e7afb43369b76ba1a
+          BENCHMARK_MONOSPACE_CONTROL_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/monospaceControlWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_ROW_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/row-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_ROW_REVISION: 7291fd4e62e58a73cf84c85a5f8852e125b59935
           BENCHMARK_CONTROL_REVISION: 694001f4c388e7a4099275092db5cce7e834f49e

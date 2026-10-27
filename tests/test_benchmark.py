@@ -69,7 +69,8 @@ class BenchmarkTest(unittest.TestCase):
                         raise RuntimeError('measurement failed')
                     return trial()
                 argv = ['candidate.py', '--perf', 'test', '--bundle', str(bundle), '--revision', 'candidate-sha',
-                        '--label', 'paired-candidate', '--control-bundle', str(control), '--control-revision', 'control-sha']
+                        '--label', 'paired-candidate', '--control-bundle', str(control), '--control-revision', 'control-sha',
+                        '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff']
                 with contextlib.chdir(root), patch.object(candidate, 'ROOT', root), \
                         patch.object(candidate, 'trial', side_effect=measure), patch.object(sys, 'argv', argv):
                     with self.assertRaises(RuntimeError) if fail else contextlib.nullcontext():
@@ -80,6 +81,7 @@ class BenchmarkTest(unittest.TestCase):
                     for label, revision in [('paired-candidate', 'candidate-sha'), ('paired-flat', 'control-sha')]:
                         output = json.loads((root / f'results/diagnostics/{label}.json').read_text())
                         self.assertEqual(output['workerRevision'], revision)
+                        self.assertEqual(output['virtualDomRevision'], 'new-diff' if label == 'paired-candidate' else 'old-diff')
                         self.assertEqual(len(output['trials']), 3)
                         self.assertEqual(len(output['sequence']), 6)
 
