@@ -1,5 +1,6 @@
 """Cgroup-scoped hardware counters; the controller stays outside the cgroup."""
 import errno
+import json
 import os
 from pathlib import Path
 import select
@@ -43,7 +44,7 @@ class Capture:
                 self.fds.append(os.open(path, os.O_RDWR | os.O_NONBLOCK))
             self.log = (self.directory / 'perf.log').open('w')
             self.process = subprocess.Popen([
-                self.perf, 'stat', '-a', '-e', 'instructions', '-G', self.group.name,
+                self.perf, 'stat', '-vv', '-a', '-e', 'instructions', '-G', self.group.name,
                 '-x', ';', '-D', '-1', '--control', f'fd:{self.fds[0]},{self.fds[1]}',
                 ], pass_fds=tuple(self.fds),
                 stdout=subprocess.DEVNULL, stderr=self.log, start_new_session=True)
@@ -56,6 +57,22 @@ class Capture:
     def control(self, command):
         os.write(self.fds[0], (command + '\n').encode())
         if not select.select([self.fds[1]], [], [], 5)[0]:
+            # Diagnostic snapshot before cleanup can erase an early exit/hang.
+            snapshot = {'command': command, 'monotonicSeconds': time.monotonic(),
+                        'returncode': self.process.poll(), 'fds': self.fds}
+            process = Path('/proc') / str(self.process.pid)
+            for name in ['status', 'wchan', 'stack', 'syscall']:
+                try:
+                    snapshot[name] = (process / name).read_text()
+                except OSError as error:
+                    snapshot[name] = str(error)
+            try:
+                snapshot['processFds'] = {fd.name: os.readlink(fd) for fd in (process / 'fd').iterdir()}
+            except OSError as error:
+                snapshot['processFds'] = str(error)
+            snapshot_path = self.directory / 'perf-control-failure.json'
+            if not snapshot_path.exists():
+                snapshot_path.write_text(json.dumps(snapshot, indent=2))
             raise RuntimeError(f'perf did not acknowledge {command}')
         # perf 6.8 writes sizeof("ack\n"), including the C NUL terminator.
         if os.read(self.fds[1], 256) not in (b'ack\n', b'ack\n\x00'):
