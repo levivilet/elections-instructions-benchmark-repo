@@ -76,13 +76,15 @@ if [ "${1:-}" != --validate-input ]; then
   # PAM may replace XDG_RUNTIME_DIR during sudo, even with --preserve-env.
   # Restore the compositor runtime after that transition, before Python builds
   # the absolute display socket used by each fresh application profile.
-  benchmark_script=scripts/benchmark.py
-  benchmark_args=(--repeats 3)
-  if [ "${BENCHMARK_DIAGNOSE:-0}" = 1 ]; then
-    benchmark_script=scripts/diagnose.py
-    benchmark_args=()
-  fi
   sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET,BENCHMARK_RUN_URL,BENCHMARK_COMMIT,BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS \
     env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-    python3 "$benchmark_script" --editor "$1" --perf "$2" "${benchmark_args[@]}"
+    python3 scripts/benchmark.py --editor "$1" --perf "$2" --repeats 3
+  # Reuse this verified desktop: restarting uinput daemons on the same host
+  # can leave compositor input state from the preceding session. Every editor
+  # trial still launches a new process tree with a fresh application profile.
+  if [ "${BENCHMARK_DIAGNOSE:-0}" = 1 ]; then
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/diagnose.py --editor "$1" --perf "$2"
+  fi
 fi

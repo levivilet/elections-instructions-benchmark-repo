@@ -63,15 +63,9 @@ jobs:
           BENCHMARK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BENCHMARK_COMMIT: ${{ github.sha }}
           BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS: ${{ github.event.inputs.zed_post_open_settle_seconds || '10' }}
+          BENCHMARK_DIAGNOSE: ${{ (matrix.editor == 'lvce' || matrix.editor == 'codemirror5') && '1' || '0' }}
         run: |
           echo "Zed post-open settling: ${BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS}s"
-          PERF=$(find -L /usr/lib/linux-tools -name perf -type f | sort | tail -n 1)
-          bash scripts/run.sh "${{ matrix.editor }}" "$PERF"
-      - name: Separate idle controls and instruction sampling
-        if: matrix.editor == 'lvce' || matrix.editor == 'codemirror5'
-        env:
-          BENCHMARK_DIAGNOSE: '1'
-        run: |
           PERF=$(find -L /usr/lib/linux-tools -name perf -type f | sort | tail -n 1)
           bash scripts/run.sh "${{ matrix.editor }}" "$PERF"
       - uses: actions/upload-artifact@v5
