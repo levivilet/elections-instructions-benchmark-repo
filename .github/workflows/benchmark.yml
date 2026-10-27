@@ -119,7 +119,7 @@ jobs:
         if: matrix.editor == 'lvce'
         with:
           repository: lvce-editor/editor-worker
-          ref: ac1b81de96ec3e8e78c433d1138310b1cd5f202c
+          ref: 8d2a6fbda45133b75b49350dfe8d1a104bfce10d
           path: .tmp/monospace-worker
       - name: Build initial monospace geometry candidate
         if: matrix.editor == 'lvce'
@@ -162,7 +162,7 @@ jobs:
           BENCHMARK_DIAGNOSE: ${{ (matrix.editor == 'lvce' || matrix.editor == 'codemirror5') && '1' || '0' }}
           BENCHMARK_ALLOCATION_PROFILE: '1'
           BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/monospace-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
-          BENCHMARK_CANDIDATE_REVISION: ac1b81de96ec3e8e78c433d1138310b1cd5f202c
+          BENCHMARK_CANDIDATE_REVISION: 8d2a6fbda45133b75b49350dfe8d1a104bfce10d
           BENCHMARK_ROW_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/row-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_ROW_REVISION: 7291fd4e62e58a73cf84c85a5f8852e125b59935
           BENCHMARK_CONTROL_REVISION: 694001f4c388e7a4099275092db5cce7e834f49e

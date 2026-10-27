@@ -36,6 +36,7 @@ const start = async (sessionId) => {
     }, sessionId)
   } else {
     await send('Profiler.enable', {}, sessionId)
+    await send('Profiler.setSamplingInterval', { interval: 100 }, sessionId)
     await send('Profiler.start', {}, sessionId)
   }
 }
