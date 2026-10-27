@@ -65,6 +65,9 @@ class ProfileCapture(Capture):
             raise RuntimeError('instruction profile contains no samples')
         for name in ['perf.data', 'perf.log']:
             shutil.move(str(self.directory / name), str(destination / name))
+            # perf creates root-only data when cgroup capture runs via sudo.
+            # These profiles contain only the synthetic benchmark document.
+            (destination / name).chmod(0o644)
         return {'diagnosticProfile': str(destination), 'cutoffAcknowledged': True}
 
 
