@@ -15,7 +15,8 @@ def main():
     parser.add_argument('--perf', required=True)
     parser.add_argument('--bundle', type=Path, required=True)
     parser.add_argument('--revision', required=True)
-    parser.add_argument('--label', choices=['baseline', 'candidate'], default='candidate')
+    parser.add_argument('--label', choices=['baseline', 'dependency', 'token', 'candidate'], default='candidate')
+    parser.add_argument('--virtual-dom-revision')
     args = parser.parse_args()
     editor = next(e for e in json.loads((ROOT / 'config/editors.lock.json').read_text()) if e['id'] == 'lvce')
     targets = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/packages/editor-worker/dist/editorWorkerMain.js'))
@@ -23,6 +24,7 @@ def main():
         raise RuntimeError(f'expected one installed editor bundle, got {targets}')
     target = targets[0]
     output = {'editor': editor, 'protocol': PROTOCOL, 'workerRevision': args.revision,
+              'virtualDomRevision': args.virtual_dom_revision,
               'bundleSha256': hashlib.sha256(args.bundle.read_bytes()).hexdigest(),
               'note': 'Diagnostic candidate, not the pinned release; excluded from the official report.', 'trials': []}
     destination = Path(f'results/diagnostics/{args.label}.json')

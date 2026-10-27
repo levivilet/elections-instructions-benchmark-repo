@@ -14,6 +14,7 @@ TEXT = ('selectiontarget ' * 8 + '\n') * 60
 
 def main():
     if '--client' in sys.argv:
+        import ctypes
         import gi
         gi.require_version('Gtk', '3.0')
         from gi.repository import Gtk, GLib, GObject
@@ -21,17 +22,32 @@ def main():
         view = Gtk.TextView()
         view.set_monospace(True)
         view.get_buffer().set_text(TEXT)
+        # GTK represents mouse sequences as NULL, but GTK3's introspection
+        # annotation incorrectly rejects None for get_sequence_state().
+        gtk = ctypes.CDLL('libgtk-3.so.0')
+        gtk.gtk_gesture_get_sequence_state.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        gtk.gtk_gesture_get_sequence_state.restype = ctypes.c_int
+        pointer = ctypes.pythonapi.PyCapsule_GetPointer
+        pointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
+        pointer.restype = ctypes.c_void_p
         def record(data):
             with Path('results/wayland-client-events.jsonl').open('a') as stream:
                 stream.write(json.dumps(dict(data, monotonic=time.monotonic())) + '\n')
+        observed_gestures = set()
         def record_gesture(gesture, n_press, x, y):
             if gesture.get_widget() != view:
                 return True
+            if gesture not in observed_gestures:
+                observed_gestures.add(gesture)
+                gesture.connect('stopped', lambda current: record(dict(gesture='stopped')))
+                gesture.connect('sequence-state-changed', lambda current, sequence, state:
+                                record(dict(gesture='sequence-state-changed', state=int(state))))
             sequence = gesture.get_current_sequence()
             event = gesture.get_last_event(sequence)
             source = event.get_source_device() if event else None
             record(dict(gesture='pressed', count=n_press, x=x, y=y,
-                        sequenceState=str(gesture.get_sequence_state(sequence)),
+                        sequenceState=(str(gesture.get_sequence_state(sequence)) if sequence else
+                                       gtk.gtk_gesture_get_sequence_state(pointer(gesture.__gpointer__, None), None)),
                         active=gesture.is_active(), recognized=gesture.is_recognized(),
                         button=gesture.get_current_button(),
                         eventTime=event.get_time() if event else None,

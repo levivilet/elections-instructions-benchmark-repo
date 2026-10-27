@@ -93,6 +93,12 @@ if [ "${1:-}" != --validate-input ]; then
       python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_BASELINE_BUNDLE" --revision a45322d60d92a59d80dec53d0b369338136145c7 --label baseline
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION"
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_DEPENDENCY_BUNDLE" --revision d4662b53cd745270bc4622b99d84d5eef218cdab --label dependency
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_TOKEN_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --label token
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION"
   fi
 fi
