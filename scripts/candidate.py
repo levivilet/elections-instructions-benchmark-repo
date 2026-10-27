@@ -24,6 +24,10 @@ def pointer_renderer(content):
         raise RuntimeError('expected one pinned renderer pointer-call anchor')
     return content.replace(POINTER_RENDER_ANCHOR, """      if (fullId === "Editor.handleMouseDown" && !preserveFocus && getEditorUids(editor).size === 1) {
         const commands = await actualInvoke("Editor.handleMouseDownAndRender", editor.uid, ...restArgs);
+        if (getEditorUids(editor).size > 1) {
+          const pending = await renderPendingEditors(editor, preserveFocus);
+          return { ...pending, commands: [...commands, ...pending.commands] };
+        }
         return { ...editor, commands };
       }
 """ + POINTER_RENDER_ANCHOR)
