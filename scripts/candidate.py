@@ -8,9 +8,32 @@ import shutil
 import tempfile
 
 from benchmark import ROOT, PROTOCOL, trial, selection_evidence_is_valid
-from counters import parse_counter
+from counters import Capture, parse_counter
 from diagnose import ProfileCapture
 from response import ResponseCapture
+
+
+OVERLAY_CSS = b'\n.Selections { position: absolute; inset: 0; pointer-events: none; contain: strict; will-change: transform; } .LayerCursor { will-change: transform; }\n'
+
+
+class CandidateCapture(Capture):
+    def finish(self):
+        result = super().finish()
+        memory = []
+        for pid in self.pids():
+            try:
+                fields = {}
+                for line in (Path('/proc') / str(pid) / 'smaps_rollup').read_text().splitlines():
+                    if line.startswith(('Rss:', 'Pss:')):
+                        key, value, unit = line.split()
+                        if unit != 'kB':
+                            raise RuntimeError(f'unexpected process memory unit: {unit}')
+                        fields[key[:-1]] = int(value) * 1024
+                memory.append({'pid': pid, **fields})
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+        result['memoryAfterCutoff'] = memory
+        return result
 
 
 POINTER_RENDER_ANCHOR = """      await actualInvoke(fullId, editor.uid, ...restArgs);
@@ -41,6 +64,7 @@ def main():
     parser.add_argument('--label', choices=['baseline', 'dependency', 'token', 'property', 'flat', 'row', 'paired-candidate', 'paired-row', 'candidate', 'response', 'allocations', 'native', 'cpu', 'without-status'], default='candidate')
     parser.add_argument('--virtual-dom-revision')
     parser.add_argument('--pointer-render', action='store_true')
+    parser.add_argument('--editor-overlay', action='store_true')
     parser.add_argument('--renderer-revision')
     parser.add_argument('--control-bundle', type=Path)
     parser.add_argument('--control-label', default='paired-flat')
@@ -71,13 +95,24 @@ def main():
         renderer_target = renderers[0]
         renderer_original = renderer_target.read_bytes()
         renderer_candidate = pointer_renderer(renderer_original.decode()).encode()
-    plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render)]
+    css_target = None
+    css_original = css_candidate = None
+    if args.editor_overlay:
+        styles = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/css/parts/ViewletEditor.css'))
+        if len(styles) != 1:
+            raise RuntimeError(f'expected one installed editor stylesheet, got {styles}')
+        css_target = styles[0]
+        css_original = css_target.read_bytes()
+        css_candidate = css_original + OVERLAY_CSS
+    plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render, args.editor_overlay)]
     if args.control_bundle:
-        plans.insert(0, (args.control_label, args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision, args.control_pointer_render or (args.pointer_render if args.label == 'without-status' else False)))
+        plans.insert(0, (args.control_label, args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision, args.control_pointer_render or (args.pointer_render if args.label == 'without-status' else False), False))
     sequence = []
     outputs = {label: {'editor': editor, 'protocol': PROTOCOL, 'workerRevision': revision,
                        'virtualDomRevision': virtual_dom_revision,
                        'pointerRender': pointer_render,
+                       'editorOverlay': editor_overlay,
+                       'editorStylesSha256': hashlib.sha256(css_candidate if editor_overlay else css_original).hexdigest() if css_original else None,
                        'diagnosticStatusSuppressed': label == 'without-status',
                        'rendererPatchRevision': args.renderer_revision if pointer_render else None,
                        'rendererBundleSha256': hashlib.sha256(renderer_candidate if pointer_render else renderer_original).hexdigest() if renderer_original else None,
@@ -88,7 +123,7 @@ def main():
                        'sequence': sequence,
                        'note': 'Diagnostic candidate, not the pinned release; excluded from the official report.',
                        'trials': []}
-               for label, bundle, revision, virtual_dom_revision, pointer_render in plans}
+               for label, bundle, revision, virtual_dom_revision, pointer_render, editor_overlay in plans}
     destination = Path('results/diagnostics')
     destination.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='selection-candidate-backup-') as directory:
@@ -97,11 +132,13 @@ def main():
         try:
             for repeat in range(1, 4):
                 ordered = plans if repeat % 2 else list(reversed(plans))
-                for label, bundle, revision, _virtual_dom_revision, pointer_render in ordered:
+                for label, bundle, revision, _virtual_dom_revision, pointer_render, editor_overlay in ordered:
                     shutil.copyfile(bundle, target)
                     if renderer_target:
                         renderer_target.write_bytes(renderer_candidate if pointer_render else renderer_original)
-                    options = {}
+                    if css_target:
+                        css_target.write_bytes(css_candidate if editor_overlay else css_original)
+                    options = {'capture_type': CandidateCapture}
                     if args.response:
                         os.environ['SELECTION_RESPONSE_EDITOR'] = 'lvce'
                         os.environ['SELECTION_RESPONSE_DESTINATION'] = str(
@@ -127,6 +164,8 @@ def main():
             shutil.copyfile(backup, target)
             if renderer_target:
                 renderer_target.write_bytes(renderer_original)
+            if css_target:
+                css_target.write_bytes(css_original)
 
 
 if __name__ == '__main__':

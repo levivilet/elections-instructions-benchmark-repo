@@ -62,6 +62,10 @@ class BenchmarkTest(unittest.TestCase):
                 renderer.parent.mkdir(parents=True)
                 renderer.write_text(candidate.POINTER_RENDER_ANCHOR)
                 pointer_observed = []
+                css = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/css/parts/ViewletEditor.css'
+                css.parent.mkdir(parents=True)
+                css.write_text('original CSS')
+                css_observed = []
                 bundle = root / 'candidate.js'
                 bundle.write_text('candidate')
                 control = root / 'control.js'
@@ -69,6 +73,7 @@ class BenchmarkTest(unittest.TestCase):
                 observed = []
                 def measure(*args, **kwargs):
                     observed.append(installed.read_text())
+                    css_observed.append(css.read_text().endswith(candidate.OVERLAY_CSS.decode()))
                     pointer_observed.append('Editor.handleMouseDownAndRender' in renderer.read_text())
                     if fail and len(observed) == 3:
                         raise RuntimeError('measurement failed')
@@ -77,7 +82,7 @@ class BenchmarkTest(unittest.TestCase):
                 argv = ['candidate.py', '--perf', 'test', '--bundle', str(bundle), '--revision', 'candidate-sha',
                         '--label', label, '--control-bundle', str(control), '--control-revision', 'control-sha',
                         '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
-                        '--pointer-render', '--renderer-revision', 'reviewed-renderer']
+                        '--pointer-render', '--renderer-revision', 'reviewed-renderer', '--editor-overlay']
                 if control_pointer:
                     argv.append('--control-pointer-render')
                 with contextlib.chdir(root), patch.object(candidate, 'ROOT', root), \
@@ -86,14 +91,17 @@ class BenchmarkTest(unittest.TestCase):
                         candidate.main()
                 self.assertEqual(installed.read_text(), 'original')
                 self.assertEqual(renderer.read_text(), candidate.POINTER_RENDER_ANCHOR)
+                self.assertEqual(css.read_text(), 'original CSS')
                 if not fail:
                     self.assertEqual(observed, ['control', 'candidate', 'candidate', 'control', 'control', 'candidate'])
+                    self.assertEqual(css_observed, [False, True, True, False, False, True])
                     self.assertEqual(pointer_observed, [True] * 6 if status_ablation or control_pointer else [False, True, True, False, False, True])
                     for output_label, revision in [(label, 'candidate-sha'), ('paired-flat', 'control-sha')]:
                         output = json.loads((root / f'results/diagnostics/{output_label}.json').read_text())
                         self.assertEqual(output['workerRevision'], revision)
                         self.assertEqual(output['virtualDomRevision'], 'old-diff' if output_label == 'paired-flat' else 'new-diff')
                         self.assertEqual(output['pointerRender'], status_ablation or control_pointer or output_label != 'paired-flat')
+                        self.assertEqual(output['editorOverlay'], output_label != 'paired-flat')
                         self.assertEqual(output['diagnosticStatusSuppressed'], output_label == 'without-status')
                         self.assertEqual(len(output['trials']), 3)
                         self.assertEqual(len(output['sequence']), 6)
