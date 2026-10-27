@@ -7,6 +7,7 @@ import platform
 import shutil
 import signal
 import subprocess
+import time
 
 from benchmark import ROOT, PROTOCOL, trial, selection_evidence_is_valid
 from counters import Capture
@@ -15,26 +16,34 @@ from counters import Capture
 class ProfileCapture(Capture):
     def __enter__(self):
         self.group.mkdir()
-        try:
-            for name in ['control', 'ack']:
-                path = self.directory / name
-                os.mkfifo(path)
-                self.fds.append(os.open(path, os.O_RDWR | os.O_NONBLOCK))
-            self.log = (self.directory / 'perf.log').open('w')
-            self.process = subprocess.Popen([
-                self.perf, 'record', '-a', '-e', 'instructions', '-c', '100000',
-                '-G', self.group.name, '--call-graph', 'dwarf,8192', '-D', '-1',
-                '--tail-synthesize',
-                '--control', f'fd:{self.fds[0]},{self.fds[1]}',
-                '-o', str(self.directory / 'perf.data'),
-            ], pass_fds=tuple(self.fds), stdout=subprocess.DEVNULL,
-                stderr=self.log, start_new_session=True)
-            self.control('ping', timeout=30)
-            self.control('enable')
-            return self
-        except BaseException:
-            self.__exit__(None, None, None)
-            raise
+        return self
+
+    def cutoff(self):
+        if self.process is None:
+            self.disabled_at = time.monotonic()
+        else:
+            super().cutoff()
+
+    def start(self):
+        if self.disabled_at is None:
+            raise RuntimeError('profile must be disabled before selection starts')
+        # Create the recorder after startup, so its initial metadata synthesis
+        # sees the editor's existing processes, threads and executable maps.
+        for name in ['control', 'ack']:
+            path = self.directory / name
+            os.mkfifo(path)
+            self.fds.append(os.open(path, os.O_RDWR | os.O_NONBLOCK))
+        self.log = (self.directory / 'perf.log').open('w')
+        self.process = subprocess.Popen([
+            self.perf, 'record', '-a', '-e', 'instructions', '-c', '100000',
+            '-G', self.group.name, '--call-graph', 'dwarf,8192', '-D', '-1',
+            '--control', f'fd:{self.fds[0]},{self.fds[1]}',
+            '-o', str(self.directory / 'perf.data'),
+        ], pass_fds=tuple(self.fds), stdout=subprocess.DEVNULL,
+            stderr=self.log, start_new_session=True)
+        self.control('ping', timeout=30)
+        self.control('enable')
+        self.disabled_at = None
 
     def launch(self, command, environment, stdout, stderr, cwd=None):
         # Resolve V8 generated code in the sampled profile. This extra work is
@@ -57,9 +66,6 @@ class ProfileCapture(Capture):
             except FileNotFoundError:
                 continue
         (destination / 'processes.json').write_text(json.dumps(processes, indent=2) + '\n')
-        # Startup was excluded while counters were disabled. Synthesize the
-        # surviving processes' comm/mmap records at the tail so their sampled
-        # instructions can still be attributed and unwound.
         self.process.send_signal(signal.SIGINT)
         self.process.wait(timeout=10)
         self.log.flush()
