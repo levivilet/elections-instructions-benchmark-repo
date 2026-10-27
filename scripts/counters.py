@@ -48,15 +48,19 @@ class Capture:
                 '-x', ';', '-D', '-1', '--control', f'fd:{self.fds[0]},{self.fds[1]}',
                 ], pass_fds=tuple(self.fds),
                 stdout=subprocess.DEVNULL, stderr=self.log, start_new_session=True)
+            # Cold executable/library pages can block perf startup on runner IO.
+            # Wait for its control loop while -D -1 keeps counters disabled;
+            # measurement commands retain their short acknowledgement deadline.
+            self.control('ping', timeout=30)
             self.control('enable')
             return self
         except BaseException:
             self.__exit__(None, None, None)
             raise
 
-    def control(self, command):
+    def control(self, command, timeout=5):
         os.write(self.fds[0], (command + '\n').encode())
-        if not select.select([self.fds[1]], [], [], 5)[0]:
+        if not select.select([self.fds[1]], [], [], timeout)[0]:
             # Diagnostic snapshot before cleanup can erase an early exit/hang.
             snapshot = {'command': command, 'monotonicSeconds': time.monotonic(),
                         'returncode': self.process.poll(), 'fds': self.fds}
