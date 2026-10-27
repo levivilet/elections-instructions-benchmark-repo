@@ -110,7 +110,7 @@ class ProfileCapture(Capture):
             with (destination / name).open('w') as output:
                 subprocess.run([self.perf, *args, '-i', str(self.directory / 'perf.data')],
                                stdout=output, stderr=subprocess.STDOUT, check=True)
-        if not (destination / 'stacks.txt').read_text().strip():
+        if not (destination / 'leaf.txt').read_text().strip():
             raise RuntimeError('instruction profile contains no samples')
         for name in ['perf.data', 'perf.log']:
             shutil.move(str(self.directory / name), str(destination / name))
