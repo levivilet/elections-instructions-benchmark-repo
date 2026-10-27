@@ -16,11 +16,32 @@ def main():
     if '--client' in sys.argv:
         import gi
         gi.require_version('Gtk', '3.0')
-        from gi.repository import Gtk, GLib
+        from gi.repository import Gtk, GLib, GObject
         window = Gtk.Window(title='Wayland input acceptance')
         view = Gtk.TextView()
         view.set_monospace(True)
         view.get_buffer().set_text(TEXT)
+        def record(data):
+            with Path('results/wayland-client-events.jsonl').open('a') as stream:
+                stream.write(json.dumps(dict(data, monotonic=time.monotonic())) + '\n')
+        def record_gesture(gesture, n_press, x, y):
+            if gesture.get_widget() != view:
+                return True
+            sequence = gesture.get_current_sequence()
+            event = gesture.get_last_event(sequence)
+            source = event.get_source_device() if event else None
+            record(dict(gesture='pressed', count=n_press, x=x, y=y,
+                        sequenceState=str(gesture.get_sequence_state(sequence)),
+                        active=gesture.is_active(), recognized=gesture.is_recognized(),
+                        button=gesture.get_current_button(),
+                        eventTime=event.get_time() if event else None,
+                        source=str(source.get_source()) if source else None,
+                        sourceName=source.get_name() if source else None))
+            return True
+        GObject.add_emission_hook(Gtk.GestureMultiPress, 'pressed', record_gesture)
+        settings = view.get_settings()
+        record(dict(doubleClickTime=settings.get_property('gtk-double-click-time'),
+                    doubleClickDistance=settings.get_property('gtk-double-click-distance')))
         def record_click(widget, event):
             event_data = dict(type=str(event.type), x=event.x, y=event.y,
                               button=event.button, state=int(event.state), time=event.time,
@@ -29,8 +50,7 @@ def main():
                 buffer = view.get_buffer()
                 bounds = buffer.get_selection_bounds()
                 selection = buffer.get_text(*bounds, True) if bounds else None
-                with Path('results/wayland-client-events.jsonl').open('a') as stream:
-                    stream.write(json.dumps(dict(event_data, selection=selection)) + '\n')
+                record(dict(event_data, selection=selection))
                 return False
             GLib.idle_add(record_selection)
             return False

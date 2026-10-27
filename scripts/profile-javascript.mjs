@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline'
 import { once } from 'node:events'
 
 const directory = process.argv[2]
+const allocations = process.argv.includes('--allocations')
 await mkdir(directory, { recursive: true })
 const targets = await fetch('http://127.0.0.1:9222/json/list', { signal: AbortSignal.timeout(15000) }).then((r) => r.json())
 const page = targets.find((target) => target.type === 'page')
@@ -27,8 +28,16 @@ const send = (method, params = {}, sessionId) => new Promise((resolve, reject) =
   socket.send(JSON.stringify({ id, method, params, sessionId }))
 })
 const start = async (sessionId) => {
-  await send('Profiler.enable', {}, sessionId)
-  await send('Profiler.start', {}, sessionId)
+  if (allocations) {
+    await send('HeapProfiler.startSampling', {
+      samplingInterval: 32768,
+      includeObjectsCollectedByMajorGC: true,
+      includeObjectsCollectedByMinorGC: true,
+    }, sessionId)
+  } else {
+    await send('Profiler.enable', {}, sessionId)
+    await send('Profiler.start', {}, sessionId)
+  }
 }
 socket.addEventListener('message', ({ data }) => {
   const message = JSON.parse(data)
@@ -54,8 +63,8 @@ await once(input, 'line')
 input.close()
 await Promise.all(starts)
 for (const [index, session] of sessions.entries()) {
-  const { profile } = await send('Profiler.stop', {}, session.sessionId)
-  await writeFile(`${directory}/cpu-${index}-${session.type}.cpuprofile`, JSON.stringify(profile))
+  const { profile } = await send(allocations ? 'HeapProfiler.stopSampling' : 'Profiler.stop', {}, session.sessionId)
+  await writeFile(`${directory}/${allocations ? 'heap' : 'cpu'}-${index}-${session.type}.${allocations ? 'json' : 'cpuprofile'}`, JSON.stringify(profile))
 }
 await writeFile(`${directory}/targets.json`, JSON.stringify(sessions, null, 2))
 socket.close()

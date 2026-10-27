@@ -92,6 +92,7 @@ jobs:
           BENCHMARK_COMMIT: ${{ github.sha }}
           BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS: ${{ github.event.inputs.zed_post_open_settle_seconds || '10' }}
           BENCHMARK_DIAGNOSE: ${{ (matrix.editor == 'lvce' || matrix.editor == 'codemirror5') && '1' || '0' }}
+          BENCHMARK_ALLOCATION_PROFILE: '1'
           BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/candidate-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_CANDIDATE_REVISION: d4662b53cd745270bc4622b99d84d5eef218cdab
           BENCHMARK_BASELINE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/baseline-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
