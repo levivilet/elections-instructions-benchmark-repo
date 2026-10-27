@@ -62,9 +62,9 @@ class BenchmarkTest(unittest.TestCase):
                 renderer.parent.mkdir(parents=True)
                 renderer.write_text(candidate.POINTER_RENDER_ANCHOR)
                 pointer_observed = []
-                css = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/css/parts/ViewletEditor.css'
+                css = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/css/App.css'
                 css.parent.mkdir(parents=True)
-                css.write_text('original CSS')
+                css.write_text('.EditorLayers {} .EditorSelection {}')
                 css_observed = []
                 bundle = root / 'candidate.js'
                 bundle.write_text('candidate')
@@ -91,7 +91,7 @@ class BenchmarkTest(unittest.TestCase):
                         candidate.main()
                 self.assertEqual(installed.read_text(), 'original')
                 self.assertEqual(renderer.read_text(), candidate.POINTER_RENDER_ANCHOR)
-                self.assertEqual(css.read_text(), 'original CSS')
+                self.assertEqual(css.read_text(), '.EditorLayers {} .EditorSelection {}')
                 if not fail:
                     self.assertEqual(observed, ['control', 'candidate', 'candidate', 'control', 'control', 'candidate'])
                     self.assertEqual(css_observed, [False, True, True, False, False, True])

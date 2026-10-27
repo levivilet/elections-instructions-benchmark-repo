@@ -98,11 +98,13 @@ def main():
     css_target = None
     css_original = css_candidate = None
     if args.editor_overlay:
-        styles = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/css/parts/ViewletEditor.css'))
+        styles = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/css/App.css'))
         if len(styles) != 1:
             raise RuntimeError(f'expected one installed editor stylesheet, got {styles}')
         css_target = styles[0]
         css_original = css_target.read_bytes()
+        if b'.EditorLayers' not in css_original or b'.EditorSelection' not in css_original:
+            raise RuntimeError('packaged stylesheet is missing editor layer rules')
         css_candidate = css_original + OVERLAY_CSS
     plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render, args.editor_overlay)]
     if args.control_bundle:
