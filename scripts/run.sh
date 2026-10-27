@@ -99,15 +99,21 @@ if [ "${1:-}" != --validate-input ]; then
       python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_DEPENDENCY_BUNDLE" --revision d4662b53cd745270bc4622b99d84d5eef218cdab --label dependency
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_TOKEN_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --label token
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_TOKEN_BUNDLE" --revision "$BENCHMARK_CONTROL_REVISION" --label token
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_PROPERTY_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --label property --virtual-dom-revision d404c1bf0c5c2ec58e3407c0c5943477b03eb992
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_PROPERTY_BUNDLE" --revision "$BENCHMARK_CONTROL_REVISION" --label property --virtual-dom-revision d404c1bf0c5c2ec58e3407c0c5943477b03eb992
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_FLAT_BUNDLE" --revision "$BENCHMARK_CONTROL_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION" --label flat
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
       python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION"
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
       python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION" --label response --response
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION" --label allocations --allocation-profile
   fi
 fi
