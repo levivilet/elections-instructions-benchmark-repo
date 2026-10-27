@@ -62,7 +62,7 @@ jobs:
         if: matrix.editor == 'lvce'
         with:
           repository: lvce-editor/editor-worker
-          ref: 759384d6c804cc2d509ed7ad4c0ab29c1933cd02
+          ref: 1a4f68dc07837198a05f9a5067e9d8350fa9d4f0
           path: .tmp/candidate-worker
       - uses: actions/setup-node@v6
         if: matrix.editor == 'lvce'
@@ -78,7 +78,7 @@ jobs:
         if: matrix.editor == 'lvce'
         with:
           repository: lvce-editor/editor-worker
-          ref: a45322d60d92
+          ref: a45322d60d92a59d80dec53d0b369338136145c7
           path: .tmp/baseline-worker
       - name: Build matching source baseline
         if: matrix.editor == 'lvce'
@@ -93,7 +93,7 @@ jobs:
           BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS: ${{ github.event.inputs.zed_post_open_settle_seconds || '10' }}
           BENCHMARK_DIAGNOSE: ${{ (matrix.editor == 'lvce' || matrix.editor == 'codemirror5') && '1' || '0' }}
           BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/candidate-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
-          BENCHMARK_CANDIDATE_REVISION: 759384d6c804cc2d509ed7ad4c0ab29c1933cd02
+          BENCHMARK_CANDIDATE_REVISION: 1a4f68dc07837198a05f9a5067e9d8350fa9d4f0
           BENCHMARK_BASELINE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/baseline-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
         run: |
           echo "Zed post-open settling: ${BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS}s"

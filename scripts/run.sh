@@ -90,7 +90,7 @@ if [ "${1:-}" != --validate-input ]; then
   if [ -n "${BENCHMARK_CANDIDATE_BUNDLE:-}" ]; then
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_BASELINE_BUNDLE" --revision a45322d60d92 --label baseline
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_BASELINE_BUNDLE" --revision a45322d60d92a59d80dec53d0b369338136145c7 --label baseline
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
       python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION"
