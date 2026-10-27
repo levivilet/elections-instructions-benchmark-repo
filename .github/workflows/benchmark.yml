@@ -104,7 +104,7 @@ jobs:
         if: matrix.editor == 'lvce'
         with:
           repository: lvce-editor/editor-worker
-          ref: 86831ad2b445855ec281ef6e817b9a58fca92ada
+          ref: 7291fd4e62e58a73cf84c85a5f8852e125b59935
           path: .tmp/row-worker
       - name: Build identified row-cache candidate
         if: matrix.editor == 'lvce'
@@ -147,7 +147,7 @@ jobs:
           BENCHMARK_DIAGNOSE: ${{ (matrix.editor == 'lvce' || matrix.editor == 'codemirror5') && '1' || '0' }}
           BENCHMARK_ALLOCATION_PROFILE: '1'
           BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/row-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
-          BENCHMARK_CANDIDATE_REVISION: 86831ad2b445855ec281ef6e817b9a58fca92ada
+          BENCHMARK_CANDIDATE_REVISION: 7291fd4e62e58a73cf84c85a5f8852e125b59935
           BENCHMARK_CONTROL_REVISION: 694001f4c388e7a4099275092db5cce7e834f49e
           BENCHMARK_VIRTUAL_DOM_REVISION: 9b271c2bf2f0ece8e193eaeae76761c85776c8c1
           BENCHMARK_FLAT_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/candidate-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
