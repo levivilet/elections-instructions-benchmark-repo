@@ -143,6 +143,21 @@ jobs:
           done
           npm run build
           cp .tmp/dist/dist/editorWorkerMain.js ../monospaceControlWorkerMain.js
+          # Diagnostic ablation only: isolate status delivery while retaining
+          # the complete editor selection/document/counter guards.
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          path = Path('packages/editor-worker/src/parts/NotifyEditorStatusChange/NotifyEditorStatusChange.ts')
+          content = path.read_text()
+          start = content.index('export const notifyEditorStatusChange =')
+          end = content.index('export const notifyEditorStatusCleared =', start)
+          path.write_text(content[:start] + 'export const notifyEditorStatusChange = async (_oldEditor: EditorState, _newEditor: EditorState): Promise<void> => {}\n\n' + content[end:])
+          PYCODE
+          npm run build
+          cp .tmp/dist/dist/editorWorkerMain.js ../withoutStatusWorkerMain.js
+          git show HEAD:packages/editor-worker/src/parts/NotifyEditorStatusChange/NotifyEditorStatusChange.ts > packages/editor-worker/src/parts/NotifyEditorStatusChange/NotifyEditorStatusChange.ts
+          cp ../monospaceControlWorkerMain.js .tmp/dist/dist/editorWorkerMain.js
+
       - uses: actions/checkout@v5
         if: matrix.editor == 'lvce'
         with:
@@ -179,6 +194,7 @@ jobs:
           BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION: 4c00282f940199629d6f440e7afb43369b76ba1a
           BENCHMARK_RENDERER_REVISION: 26178d927c08dccb2d190fdcd9cab55ee4367166
           BENCHMARK_MONOSPACE_CONTROL_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/monospaceControlWorkerMain.js', github.workspace) || '' }}
+          BENCHMARK_WITHOUT_STATUS_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/withoutStatusWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_ROW_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/row-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
           BENCHMARK_ROW_REVISION: 7291fd4e62e58a73cf84c85a5f8852e125b59935
           BENCHMARK_CONTROL_REVISION: 694001f4c388e7a4099275092db5cce7e834f49e

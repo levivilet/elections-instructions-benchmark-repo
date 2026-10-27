@@ -50,8 +50,8 @@ def result(editor, counts=(100, 300, 200)):
 
 class BenchmarkTest(unittest.TestCase):
     def test_paired_candidates_alternate_and_restore_the_installed_bundle(self):
-        for fail in [False, True]:
-            with self.subTest(fail=fail), tempfile.TemporaryDirectory() as directory:
+        for fail, status_ablation in [(False, False), (True, False), (False, True), (True, True)]:
+            with self.subTest(fail=fail, status_ablation=status_ablation), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / 'config').mkdir()
                 (root / 'config/editors.lock.json').write_text('[{"id":"lvce"}]')
@@ -73,8 +73,9 @@ class BenchmarkTest(unittest.TestCase):
                     if fail and len(observed) == 3:
                         raise RuntimeError('measurement failed')
                     return trial()
+                label = 'without-status' if status_ablation else 'paired-candidate'
                 argv = ['candidate.py', '--perf', 'test', '--bundle', str(bundle), '--revision', 'candidate-sha',
-                        '--label', 'paired-candidate', '--control-bundle', str(control), '--control-revision', 'control-sha',
+                        '--label', label, '--control-bundle', str(control), '--control-revision', 'control-sha',
                         '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
                         '--pointer-render', '--renderer-revision', 'reviewed-renderer']
                 with contextlib.chdir(root), patch.object(candidate, 'ROOT', root), \
@@ -85,12 +86,13 @@ class BenchmarkTest(unittest.TestCase):
                 self.assertEqual(renderer.read_text(), candidate.POINTER_RENDER_ANCHOR)
                 if not fail:
                     self.assertEqual(observed, ['control', 'candidate', 'candidate', 'control', 'control', 'candidate'])
-                    self.assertEqual(pointer_observed, [False, True, True, False, False, True])
-                    for label, revision in [('paired-candidate', 'candidate-sha'), ('paired-flat', 'control-sha')]:
-                        output = json.loads((root / f'results/diagnostics/{label}.json').read_text())
+                    self.assertEqual(pointer_observed, [True] * 6 if status_ablation else [False, True, True, False, False, True])
+                    for output_label, revision in [(label, 'candidate-sha'), ('paired-flat', 'control-sha')]:
+                        output = json.loads((root / f'results/diagnostics/{output_label}.json').read_text())
                         self.assertEqual(output['workerRevision'], revision)
-                        self.assertEqual(output['virtualDomRevision'], 'new-diff' if label == 'paired-candidate' else 'old-diff')
-                        self.assertEqual(output['pointerRender'], label == 'paired-candidate')
+                        self.assertEqual(output['virtualDomRevision'], 'old-diff' if output_label == 'paired-flat' else 'new-diff')
+                        self.assertEqual(output['pointerRender'], status_ablation or output_label != 'paired-flat')
+                        self.assertEqual(output['diagnosticStatusSuppressed'], output_label == 'without-status')
                         self.assertEqual(len(output['trials']), 3)
                         self.assertEqual(len(output['sequence']), 6)
 

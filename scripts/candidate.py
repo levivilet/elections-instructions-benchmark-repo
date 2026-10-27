@@ -38,11 +38,12 @@ def main():
     parser.add_argument('--perf', required=True)
     parser.add_argument('--bundle', type=Path, required=True)
     parser.add_argument('--revision', required=True)
-    parser.add_argument('--label', choices=['baseline', 'dependency', 'token', 'property', 'flat', 'row', 'paired-candidate', 'paired-row', 'candidate', 'response', 'allocations', 'native', 'cpu'], default='candidate')
+    parser.add_argument('--label', choices=['baseline', 'dependency', 'token', 'property', 'flat', 'row', 'paired-candidate', 'paired-row', 'candidate', 'response', 'allocations', 'native', 'cpu', 'without-status'], default='candidate')
     parser.add_argument('--virtual-dom-revision')
     parser.add_argument('--pointer-render', action='store_true')
     parser.add_argument('--renderer-revision')
     parser.add_argument('--control-bundle', type=Path)
+    parser.add_argument('--control-label', default='paired-flat')
     parser.add_argument('--control-revision')
     parser.add_argument('--control-virtual-dom-revision')
     observers = parser.add_mutually_exclusive_group()
@@ -71,11 +72,12 @@ def main():
         renderer_candidate = pointer_renderer(renderer_original.decode()).encode()
     plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render)]
     if args.control_bundle:
-        plans.insert(0, ('paired-flat', args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision, False))
+        plans.insert(0, (args.control_label, args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision, args.pointer_render if args.label == 'without-status' else False))
     sequence = []
     outputs = {label: {'editor': editor, 'protocol': PROTOCOL, 'workerRevision': revision,
                        'virtualDomRevision': virtual_dom_revision,
                        'pointerRender': pointer_render,
+                       'diagnosticStatusSuppressed': label == 'without-status',
                        'rendererPatchRevision': args.renderer_revision if pointer_render else None,
                        'rendererBundleSha256': hashlib.sha256(renderer_candidate if pointer_render else renderer_original).hexdigest() if renderer_original else None,
                        'allocationProfiling': args.allocation_profile,
