@@ -119,6 +119,21 @@ jobs:
         if: matrix.editor == 'lvce'
         with:
           repository: lvce-editor/editor-worker
+          ref: ac1b81de96ec3e8e78c433d1138310b1cd5f202c
+          path: .tmp/monospace-worker
+      - name: Build initial monospace geometry candidate
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/monospace-worker
+        run: |
+          nice npm ci
+          for module in CompareNodes DiffFlatTrees DiffTrees VirtualDomDiffTree; do
+            cp "../candidate-virtual-dom/dist/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js" "node_modules/@lvce-editor/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js"
+          done
+          npm run build
+      - uses: actions/checkout@v5
+        if: matrix.editor == 'lvce'
+        with:
+          repository: lvce-editor/editor-worker
           ref: d4662b53cd745270bc4622b99d84d5eef218cdab
           path: .tmp/dependency-worker
       - name: Build dependency-only control
@@ -146,8 +161,10 @@ jobs:
           BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS: ${{ github.event.inputs.zed_post_open_settle_seconds || '10' }}
           BENCHMARK_DIAGNOSE: ${{ (matrix.editor == 'lvce' || matrix.editor == 'codemirror5') && '1' || '0' }}
           BENCHMARK_ALLOCATION_PROFILE: '1'
-          BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/row-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
-          BENCHMARK_CANDIDATE_REVISION: 7291fd4e62e58a73cf84c85a5f8852e125b59935
+          BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/monospace-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
+          BENCHMARK_CANDIDATE_REVISION: ac1b81de96ec3e8e78c433d1138310b1cd5f202c
+          BENCHMARK_ROW_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/row-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
+          BENCHMARK_ROW_REVISION: 7291fd4e62e58a73cf84c85a5f8852e125b59935
           BENCHMARK_CONTROL_REVISION: 694001f4c388e7a4099275092db5cce7e834f49e
           BENCHMARK_VIRTUAL_DOM_REVISION: 9b271c2bf2f0ece8e193eaeae76761c85776c8c1
           BENCHMARK_FLAT_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/candidate-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}

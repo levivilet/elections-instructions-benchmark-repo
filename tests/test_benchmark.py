@@ -1,4 +1,5 @@
 import copy
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,7 @@ from benchmark import (CLIPBOARD_SENTINEL_PREFIX, DOUBLE_CLICK_DELAY_MS, FIXTURE
 from wayland import main_windows, move_pointer
 from counters import Capture, parse_counter
 import report
+import candidate
 from install import BUILD_APPS
 
 
@@ -47,6 +49,40 @@ def result(editor, counts=(100, 300, 200)):
 
 
 class BenchmarkTest(unittest.TestCase):
+    def test_paired_candidates_alternate_and_restore_the_installed_bundle(self):
+        for fail in [False, True]:
+            with self.subTest(fail=fail), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / 'config').mkdir()
+                (root / 'config/editors.lock.json').write_text('[{"id":"lvce"}]')
+                installed = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/packages/editor-worker/dist/editorWorkerMain.js'
+                installed.parent.mkdir(parents=True)
+                installed.write_text('original')
+                bundle = root / 'candidate.js'
+                bundle.write_text('candidate')
+                control = root / 'control.js'
+                control.write_text('control')
+                observed = []
+                def measure(*args, **kwargs):
+                    observed.append(installed.read_text())
+                    if fail and len(observed) == 3:
+                        raise RuntimeError('measurement failed')
+                    return trial()
+                argv = ['candidate.py', '--perf', 'test', '--bundle', str(bundle), '--revision', 'candidate-sha',
+                        '--label', 'paired-candidate', '--control-bundle', str(control), '--control-revision', 'control-sha']
+                with contextlib.chdir(root), patch.object(candidate, 'ROOT', root), \
+                        patch.object(candidate, 'trial', side_effect=measure), patch.object(sys, 'argv', argv):
+                    with self.assertRaises(RuntimeError) if fail else contextlib.nullcontext():
+                        candidate.main()
+                self.assertEqual(installed.read_text(), 'original')
+                if not fail:
+                    self.assertEqual(observed, ['control', 'candidate', 'candidate', 'control', 'control', 'candidate'])
+                    for label, revision in [('paired-candidate', 'candidate-sha'), ('paired-flat', 'control-sha')]:
+                        output = json.loads((root / f'results/diagnostics/{label}.json').read_text())
+                        self.assertEqual(output['workerRevision'], revision)
+                        self.assertEqual(len(output['trials']), 3)
+                        self.assertEqual(len(output['sequence']), 6)
+
     def test_only_bundled_editor_apps_are_built_during_install(self):
         self.assertEqual(BUILD_APPS, {'codemirror-electron', 'codemirror5-electron', 'ace-electron'})
         self.assertNotIn('basic-electron', BUILD_APPS)
