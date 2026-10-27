@@ -50,7 +50,7 @@ def result(editor, counts=(100, 300, 200)):
 
 class BenchmarkTest(unittest.TestCase):
     def test_paired_candidates_alternate_and_restore_the_installed_bundle(self):
-        for fail, status_ablation, control_pointer, immediate, line_ablation in [(f, a, c, i, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True), (True, False, True, False, True)]:
+        for fail, status_ablation, control_pointer, immediate, line_ablation, text_layer in [(f, a, c, i, False, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True, False), (True, False, True, False, True, False), (False, False, True, False, False, True), (True, False, True, False, False, True)]:
             with self.subTest(fail=fail, status_ablation=status_ablation, control_pointer=control_pointer), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / 'config').mkdir()
@@ -66,7 +66,7 @@ class BenchmarkTest(unittest.TestCase):
                 pointer_observed = []
                 css = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/css/App.css'
                 css.parent.mkdir(parents=True)
-                css.write_text('.EditorLayers {} .EditorSelection {}')
+                css.write_text('.EditorLayers {} .EditorSelection {} .EditorRows {}')
                 css_observed = []
                 bundle = root / 'candidate.js'
                 bundle.write_text('candidate')
@@ -76,7 +76,7 @@ class BenchmarkTest(unittest.TestCase):
                 def measure(*args, **kwargs):
                     observed.append(installed.read_text())
                     immediate_observed.append('if (frame.immediate || isTest())' in renderer.read_text())
-                    css_observed.append(css.read_text().endswith(candidate.OVERLAY_CSS.decode()))
+                    css_observed.append(css.read_text().endswith((candidate.TEXT_LAYER_CSS if text_layer else candidate.OVERLAY_CSS).decode()))
                     pointer_observed.append('Editor.handleMouseDownAndRender' in renderer.read_text())
                     if fail and len(observed) == 3:
                         raise RuntimeError('measurement failed')
@@ -86,6 +86,8 @@ class BenchmarkTest(unittest.TestCase):
                         '--label', label, '--control-bundle', str(control), '--control-revision', 'control-sha',
                         '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
                         '--pointer-render', '--renderer-revision', 'reviewed-renderer', '--editor-overlay']
+                if text_layer:
+                    argv[argv.index('--editor-overlay')] = '--text-layer'
                 if immediate:
                     argv.append('--immediate-render')
                 if control_pointer:
@@ -96,7 +98,7 @@ class BenchmarkTest(unittest.TestCase):
                         candidate.main()
                 self.assertEqual(installed.read_text(), 'original')
                 self.assertEqual(renderer.read_text(), original_renderer)
-                self.assertEqual(css.read_text(), '.EditorLayers {} .EditorSelection {}')
+                self.assertEqual(css.read_text(), '.EditorLayers {} .EditorSelection {} .EditorRows {}')
                 if not fail:
                     self.assertEqual(observed, ['control', 'candidate', 'candidate', 'control', 'control', 'candidate'])
                     self.assertEqual(immediate_observed, [False, True, True, False, False, True] if immediate else [False] * 6)
@@ -108,7 +110,8 @@ class BenchmarkTest(unittest.TestCase):
                         self.assertEqual(output['virtualDomRevision'], 'old-diff' if output_label == 'paired-flat' else 'new-diff')
                         self.assertEqual(output['pointerRender'], status_ablation or control_pointer or output_label != 'paired-flat')
                         self.assertEqual(output['immediateRender'], immediate and output_label != 'paired-flat')
-                        self.assertEqual(output['editorOverlay'], output_label != 'paired-flat')
+                        self.assertEqual(output['editorOverlay'], not text_layer and output_label != 'paired-flat')
+                        self.assertEqual(output['textLayer'], text_layer and output_label != 'paired-flat')
                         self.assertEqual(output['diagnosticLineDecorationsSuppressed'], line_ablation and output_label != 'paired-flat')
                         self.assertEqual(output['diagnosticStatusSuppressed'], output_label == 'without-status')
                         self.assertEqual(len(output['trials']), 3)

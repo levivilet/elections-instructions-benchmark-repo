@@ -18,6 +18,9 @@ let nextId = 0
 const requests = new Map()
 const sessions = [{ sessionId: undefined, type: 'page', url: page.url }]
 const starts = []
+const traceEvents = []
+let finishTrace
+const traceComplete = new Promise((resolve) => { finishTrace = resolve })
 const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
   const id = ++nextId
   const timeout = setTimeout(() => {
@@ -49,12 +52,19 @@ socket.addEventListener('message', ({ data }) => {
     requests.delete(message.id)
     if (message.error) request.reject(new Error(JSON.stringify(message.error)))
     else request.resolve(message.result)
+  } else if (message.method === 'Tracing.dataCollected') {
+    traceEvents.push(...message.params.value)
+  } else if (message.method === 'Tracing.tracingComplete') {
+    finishTrace()
   } else if (message.method === 'Target.attachedToTarget') {
     const { sessionId, targetInfo } = message.params
     sessions.push({ sessionId, type: targetInfo.type, url: targetInfo.url })
     starts.push(start(sessionId))
   }
 })
+if (!allocations) {
+  await send('Tracing.start', { categories: 'devtools.timeline,cc,viz,disabled-by-default-devtools.timeline.invalidationTracking', transferMode: 'ReportEvents' })
+}
 await start()
 await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true })
 await Promise.all(starts)
@@ -66,6 +76,11 @@ await Promise.all(starts)
 for (const [index, session] of sessions.entries()) {
   const { profile } = await send(allocations ? 'HeapProfiler.stopSampling' : 'Profiler.stop', {}, session.sessionId)
   await writeFile(`${directory}/${allocations ? 'heap' : 'cpu'}-${index}-${session.type}.${allocations ? 'json' : 'cpuprofile'}`, JSON.stringify(profile))
+}
+if (!allocations) {
+  await send('Tracing.end')
+  await Promise.race([traceComplete, new Promise((_, reject) => setTimeout(() => reject(new Error('Browser trace did not finish')), 15000).unref())])
+  await writeFile(`${directory}/browser-trace.json`, JSON.stringify({ traceEvents }))
 }
 await writeFile(`${directory}/targets.json`, JSON.stringify(sessions, null, 2))
 socket.close()

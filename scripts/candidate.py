@@ -16,6 +16,9 @@ from response import ResponseCapture
 OVERLAY_CSS = b'\n.Selections { position: absolute; inset: 0; pointer-events: none; contain: strict; will-change: transform; } .LayerCursor { will-change: transform; }\n'
 
 
+TEXT_LAYER_CSS = b'\n.EditorRows { will-change: transform; }\n'
+
+
 class CandidateCapture(Capture):
     def finish(self):
         result = super().finish()
@@ -134,7 +137,9 @@ def main():
     parser.add_argument('--label', choices=['baseline', 'dependency', 'token', 'property', 'flat', 'row', 'paired-candidate', 'paired-row', 'candidate', 'response', 'allocations', 'native', 'cpu', 'without-status', 'without-line-decorations'], default='candidate')
     parser.add_argument('--virtual-dom-revision')
     parser.add_argument('--pointer-render', action='store_true')
-    parser.add_argument('--editor-overlay', action='store_true')
+    styles = parser.add_mutually_exclusive_group()
+    styles.add_argument('--editor-overlay', action='store_true')
+    styles.add_argument('--text-layer', action='store_true')
     parser.add_argument('--immediate-render', action='store_true')
     parser.add_argument('--renderer-revision')
     parser.add_argument('--control-bundle', type=Path)
@@ -169,7 +174,7 @@ def main():
         renderer_candidate = immediate_renderer(renderer_pointer.decode()).encode() if args.immediate_render else renderer_pointer
     css_target = None
     css_original = css_candidate = None
-    if args.editor_overlay:
+    if args.editor_overlay or args.text_layer:
         styles = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/css/App.css'))
         if len(styles) != 1:
             raise RuntimeError(f'expected one installed editor stylesheet, got {styles}')
@@ -177,15 +182,18 @@ def main():
         css_original = css_target.read_bytes()
         if b'.EditorLayers' not in css_original or b'.EditorSelection' not in css_original:
             raise RuntimeError('packaged stylesheet is missing editor layer rules')
-        css_candidate = css_original + OVERLAY_CSS
-    plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render, args.editor_overlay)]
+        if args.text_layer and b'.EditorRows' not in css_original:
+            raise RuntimeError('packaged stylesheet is missing editor rows rules')
+        css_candidate = css_original + (TEXT_LAYER_CSS if args.text_layer else OVERLAY_CSS)
+    plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render, args.editor_overlay or args.text_layer)]
     if args.control_bundle:
         plans.insert(0, (args.control_label, args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision, args.control_pointer_render or (args.pointer_render if args.label == 'without-status' else False), False))
     sequence = []
     outputs = {label: {'editor': editor, 'protocol': PROTOCOL, 'workerRevision': revision,
                        'virtualDomRevision': virtual_dom_revision,
                        'pointerRender': pointer_render,
-                       'editorOverlay': editor_overlay,
+                       'editorOverlay': editor_overlay and args.editor_overlay,
+                       'textLayer': editor_overlay and args.text_layer,
                        'immediateRender': args.immediate_render and label == args.label,
                        'editorStylesSha256': hashlib.sha256(css_candidate if editor_overlay else css_original).hexdigest() if css_original else None,
                        'diagnosticStatusSuppressed': label == 'without-status',
