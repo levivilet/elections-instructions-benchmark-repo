@@ -122,7 +122,7 @@ class BenchmarkTest(unittest.TestCase):
                     released_status.write_text('released status source')
                     argv += ['--status-worker-bundle', str(released_status), '--status-worker-version', '3.35.3']
                     if main_noop:
-                        argv.append('--control-status-worker')
+                        argv += ['--control-status-worker', '--control-main-area-noop']
                 elif width_persistence:
                     argv.append('--disable-status-width-persistence')
                 if historical:
@@ -150,7 +150,7 @@ class BenchmarkTest(unittest.TestCase):
                 self.assertEqual(renderer.read_text(), original_renderer)
                 self.assertEqual(css.read_text(), original_css)
                 if not fail:
-                    self.assertEqual(main_observed, [False, True, True, False, False, True] if main_noop else [False] * 6)
+                    self.assertEqual(main_observed, [True] * 6 if main_noop and width_persistence == 'released' else [False, True, True, False, False, True] if main_noop else [False] * 6)
                     self.assertEqual(status_observed, [True] * 6 if main_noop and width_persistence == 'released' else [False, True, True, False, False, True] if width_persistence else [False] * 6)
                     self.assertEqual(page_observed, [True] * 6 if ai_ablation else [False, True, True, False, False, True] if css_dedup else [False] * 6)
                     self.assertEqual(ai_observed, [False, True, True, False, False, True] if ai_ablation else [False] * 6)

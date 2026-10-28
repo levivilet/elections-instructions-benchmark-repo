@@ -259,8 +259,11 @@ def main():
     parser.add_argument('--control-status-worker', action='store_true')
     parser.add_argument('--main-area-noop', action='store_true')
     parser.add_argument('--main-area-revision')
+    parser.add_argument('--control-main-area-noop', action='store_true')
     parser.add_argument('--disable-status-width-persistence', action='store_true', help='diagnostic only: measure status labels without persistent width cache')
     args = parser.parse_args()
+    if args.control_main_area_noop and not args.main_area_noop:
+        parser.error('control main area patch requires main area patch')
     if args.main_area_noop and not args.main_area_revision:
         parser.error('main area patch requires reviewed revision')
     if args.control_status_worker and not args.status_worker_bundle:
@@ -350,8 +353,8 @@ def main():
                        'immediateRender': args.immediate_render and label == args.label,
                        'editorStylesSha256': hashlib.sha256(css_candidate if editor_overlay else css_original).hexdigest() if css_original else None,
                        'diagnosticStatusWidthPersistenceDisabled': args.disable_status_width_persistence and label == args.label,
-                       'mainAreaPatchRevision': args.main_area_revision if args.main_area_noop and label == args.label else None,
-                       'mainAreaBundleSha256': hashlib.sha256(main_area_candidate if label == args.label else main_area_original).hexdigest() if main_area_original else None,
+                       'mainAreaPatchRevision': args.main_area_revision if args.main_area_noop and (label == args.label or args.control_main_area_noop) else None,
+                       'mainAreaBundleSha256': hashlib.sha256(main_area_candidate if label == args.label or args.control_main_area_noop else main_area_original).hexdigest() if main_area_original else None,
                        'statusWorkerVersion': args.status_worker_version if args.status_worker_bundle and (label == args.label or args.control_status_worker) else None,
                        'statusWorkerBundleSha256': hashlib.sha256(status_candidate if label == args.label or args.control_status_worker else status_original).hexdigest() if status_original else None,
                        'diagnosticStatusSuppressed': label == 'without-status',
@@ -378,7 +381,7 @@ def main():
                 for label, bundle, revision, _virtual_dom_revision, pointer_render, editor_overlay in ordered:
                     shutil.copyfile(bundle, target)
                     if main_area_target:
-                        main_area_target.write_bytes(main_area_candidate if label == args.label else main_area_original)
+                        main_area_target.write_bytes(main_area_candidate if label == args.label or args.control_main_area_noop else main_area_original)
                     if status_target:
                         status_target.write_bytes(status_candidate if label == args.label or args.control_status_worker else status_original)
                     if renderer_target:
