@@ -215,10 +215,16 @@ class BenchmarkTest(unittest.TestCase):
                 disable(content)
 
     def test_css_dedup_requires_one_known_renderer_process_implementation(self):
-        for source in ['', candidate.CSS_DEDUP_ANCHOR * 2]:
+        for source in [
+            '',
+            candidate.CSS_DEDUP_ANCHOR * 2,
+            candidate.CSS_DEDUP_REPLACEMENT * 2,
+            candidate.CSS_DEDUP_ANCHOR + candidate.CSS_DEDUP_REPLACEMENT,
+        ]:
             with self.assertRaisesRegex(RuntimeError, 'expected one pinned CSS'):
                 candidate.css_dedup_renderer(source)
         self.assertEqual(candidate.css_dedup_renderer(candidate.CSS_DEDUP_ANCHOR), candidate.CSS_DEDUP_REPLACEMENT)
+        self.assertEqual(candidate.css_dedup_renderer(candidate.CSS_DEDUP_REPLACEMENT), candidate.CSS_DEDUP_REPLACEMENT)
 
     def test_ai_root_probe_requires_two_known_selectors(self):
         selector = b':root:has(.AiNativeLayout)'

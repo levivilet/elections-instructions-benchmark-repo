@@ -181,9 +181,15 @@ CSS_DEDUP_REPLACEMENT = """const addCssStyleSheet = (id, text) => {
 
 
 def css_dedup_renderer(content):
-    if content.count(CSS_DEDUP_ANCHOR) != 1:
+    anchor_count = content.count(CSS_DEDUP_ANCHOR)
+    replacement_count = content.count(CSS_DEDUP_REPLACEMENT)
+    if anchor_count == 1 and replacement_count == 0:
+        return content.replace(CSS_DEDUP_ANCHOR, CSS_DEDUP_REPLACEMENT)
+    if anchor_count == 0 and replacement_count == 1:
+        # Newer official LVCE releases already include this shipped optimization.
+        return content
+    else:
         raise RuntimeError('expected one pinned CSS stylesheet implementation')
-    return content.replace(CSS_DEDUP_ANCHOR, CSS_DEDUP_REPLACEMENT)
 
 
 STATUS_WIDTH_CACHE_ANCHOR = """const getWidth = async text => {
