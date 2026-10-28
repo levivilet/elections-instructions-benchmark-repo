@@ -131,7 +131,7 @@ jobs:
         if: matrix.editor == 'lvce'
         with:
           repository: lvce-editor/editor-worker
-          ref: 4db09454c5adcadfcc2fd167c325e7e20fb82e98
+          ref: af4b36dad9e6c3d3b052ed07063027f784efbf9f
           path: .tmp/monospace-worker
       - name: Build combined pointer-render candidate
         if: matrix.editor == 'lvce'
@@ -140,6 +140,25 @@ jobs:
           nice npm ci
           for module in CompareNodes DiffFlatTrees DiffTrees VirtualDomDiffTree; do
             cp "../skip-virtual-dom/dist/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js" "node_modules/@lvce-editor/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js"
+          done
+          npm run build
+          cp .tmp/dist/dist/editorWorkerMain.js ../monospaceControlWorkerMain.js
+      - name: Build matching render-data control
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/monospace-worker
+        env:
+          CONTROL_REVISION: cfff4cce51ef6d787510fe7b4786d9d72aaa3094
+        run: |
+          cp .tmp/dist/dist/editorWorkerMain.js ../renderDataCandidateWorkerMain.js
+          restore() {
+            git restore --source=HEAD --worktree -- packages/editor-worker/src/parts/GetEditorVirtualDom/GetEditorVirtualDom.ts packages/editor-worker/src/parts/RenderIncremental/RenderIncremental.ts
+            cp ../renderDataCandidateWorkerMain.js .tmp/dist/dist/editorWorkerMain.js
+          }
+          trap restore EXIT
+          git fetch origin "$CONTROL_REVISION" --depth=1
+          for module in GetEditorVirtualDom RenderIncremental; do
+            source="packages/editor-worker/src/parts/$module/$module.ts"
+            git show "$CONTROL_REVISION:$source" > "$source"
           done
           npm run build
           cp .tmp/dist/dist/editorWorkerMain.js ../monospaceControlWorkerMain.js
@@ -175,8 +194,9 @@ jobs:
           BENCHMARK_DIAGNOSE: ${{ (matrix.editor == 'lvce' || matrix.editor == 'codemirror5') && '1' || '0' }}
           BENCHMARK_ALLOCATION_PROFILE: '1'
           BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/monospace-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
-          BENCHMARK_CANDIDATE_REVISION: 4db09454c5adcadfcc2fd167c325e7e20fb82e98
+          BENCHMARK_CANDIDATE_REVISION: af4b36dad9e6c3d3b052ed07063027f784efbf9f
           BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION: 4c00282f940199629d6f440e7afb43369b76ba1a
+          BENCHMARK_RENDER_DATA_CONTROL_REVISION: cfff4cce51ef6d787510fe7b4786d9d72aaa3094
           BENCHMARK_RENDERER_REVISION: 337459f154e11dbcae294b7c52cd34bded752d67
           BENCHMARK_RENDERER_PROCESS_REVISION: 5403d5f3651363528ebcb6d6b28501d8e8307a8d
           BENCHMARK_MONOSPACE_CONTROL_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/monospaceControlWorkerMain.js', github.workspace) || '' }}
