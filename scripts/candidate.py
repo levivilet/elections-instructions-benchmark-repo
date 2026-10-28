@@ -213,6 +213,7 @@ def main():
     observers.add_argument('--allocation-profile', action='store_true')
     observers.add_argument('--native-profile', action='store_true')
     observers.add_argument('--cpu-profile', action='store_true')
+    parser.add_argument('--historical-artifact', action='store_true', help='use the separately pinned original frontend for historical worker controls')
     args = parser.parse_args()
     if args.control_bundle and (not args.control_revision or args.response or args.allocation_profile or args.native_profile or args.cpu_profile):
         parser.error('paired counts require a control revision and no observer')
@@ -221,14 +222,20 @@ def main():
     if args.css_dedup and not args.renderer_process_revision:
         parser.error('CSS dedup requires its reviewed source revision')
     editor = next(e for e in json.loads((ROOT / 'config/editors.lock.json').read_text()) if e['id'] == 'lvce')
-    targets = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/packages/editor-worker/dist/editorWorkerMain.js'))
+    app_root = ROOT / '.tmp/apps/lvce'
+    if args.historical_artifact:
+        editor = json.loads((ROOT / 'config/historical-lvce.lock.json').read_text())
+        app_root = ROOT / '.tmp/apps/lvce-historical'
+        editor = {**editor, 'binary': str(app_root / editor['binary'])}
+    static_root = app_root / 'usr/lib/lvce/resources/app/static'
+    targets = list(static_root.glob('*/packages/editor-worker/dist/editorWorkerMain.js'))
     if len(targets) != 1:
         raise RuntimeError(f'expected one installed editor bundle, got {targets}')
     target = targets[0]
     renderer_target = None
     renderer_original = renderer_candidate = None
     if args.pointer_render or args.immediate_render:
-        renderers = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/packages/renderer-worker/dist/rendererWorkerMain.js'))
+        renderers = list(static_root.glob('*/packages/renderer-worker/dist/rendererWorkerMain.js'))
         if len(renderers) != 1:
             raise RuntimeError(f'expected one installed renderer bundle, got {renderers}')
         renderer_target = renderers[0]
@@ -238,7 +245,7 @@ def main():
     page_target = None
     page_original = page_candidate = None
     if args.css_dedup:
-        pages = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/packages/renderer-process/dist/rendererProcessMain.js'))
+        pages = list(static_root.glob('*/packages/renderer-process/dist/rendererProcessMain.js'))
         if len(pages) != 1:
             raise RuntimeError(f'expected one installed renderer process bundle, got {pages}')
         page_target = pages[0]
@@ -247,7 +254,7 @@ def main():
     css_target = None
     css_original = css_candidate = None
     if args.editor_overlay or args.text_layer or args.disable_ai_root_selectors:
-        styles = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/css/App.css'))
+        styles = list(static_root.glob('*/css/App.css'))
         if len(styles) != 1:
             raise RuntimeError(f'expected one installed editor stylesheet, got {styles}')
         css_target = styles[0]

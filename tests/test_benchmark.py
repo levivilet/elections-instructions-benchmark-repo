@@ -50,25 +50,32 @@ def result(editor, counts=(100, 300, 200)):
 
 class BenchmarkTest(unittest.TestCase):
     def test_paired_candidates_alternate_and_restore_the_installed_bundle(self):
-        for fail, status_ablation, control_pointer, immediate, line_ablation, text_layer, css_dedup, ai_ablation in [(f, a, c, i, False, False, False, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True, False, False, False), (True, False, True, False, True, False, False, False), (False, False, True, False, False, True, False, False), (True, False, True, False, False, True, False, False), (False, False, True, False, False, False, True, False), (True, False, True, False, False, False, True, False), (False, False, True, False, False, False, True, True), (True, False, True, False, False, False, True, True)]:
+        cases = [(f, a, c, i, False, False, False, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True, False, False, False), (True, False, True, False, True, False, False, False), (False, False, True, False, False, True, False, False), (True, False, True, False, False, True, False, False), (False, False, True, False, False, False, True, False), (True, False, True, False, False, False, True, False), (False, False, True, False, False, False, True, True), (True, False, True, False, False, False, True, True)]
+        for historical, case in [(historical, case) for historical in [False, True] for case in cases]:
+            fail, status_ablation, control_pointer, immediate, line_ablation, text_layer, css_dedup, ai_ablation = case
             with self.subTest(fail=fail, status_ablation=status_ablation, control_pointer=control_pointer), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / 'config').mkdir()
                 (root / 'config/editors.lock.json').write_text('[{"id":"lvce"}]')
-                installed = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/packages/editor-worker/dist/editorWorkerMain.js'
+                (root / 'config/historical-lvce.lock.json').write_text('{"id":"lvce","version":"historical","binary":"usr/lib/lvce/lvce"}')
+                app = '.tmp/apps/lvce-historical' if historical else '.tmp/apps/lvce'
+                current = root / '.tmp/apps/lvce/current-release-sentinel'
+                current.parent.mkdir(parents=True, exist_ok=True)
+                current.write_text('current release unchanged')
+                installed = root / f'{app}/usr/lib/lvce/resources/app/static/test/packages/editor-worker/dist/editorWorkerMain.js'
                 installed.parent.mkdir(parents=True)
                 installed.write_text('original')
-                renderer = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/packages/renderer-worker/dist/rendererWorkerMain.js'
+                renderer = root / f'{app}/usr/lib/lvce/resources/app/static/test/packages/renderer-worker/dist/rendererWorkerMain.js'
                 renderer.parent.mkdir(parents=True)
                 original_renderer = candidate.POINTER_RENDER_ANCHOR + (Path(__file__).parent / 'fixtures/pinned-render-barrier.js').read_text()
                 renderer.write_text(original_renderer)
-                page = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/packages/renderer-process/dist/rendererProcessMain.js'
+                page = root / f'{app}/usr/lib/lvce/resources/app/static/test/packages/renderer-process/dist/rendererProcessMain.js'
                 page.parent.mkdir(parents=True)
                 page.write_text(candidate.CSS_DEDUP_ANCHOR)
                 page_observed = []
                 immediate_observed = []
                 pointer_observed = []
-                css = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/css/App.css'
+                css = root / f'{app}/usr/lib/lvce/resources/app/static/test/css/App.css'
                 css.parent.mkdir(parents=True)
                 original_css = '.EditorLayers {} .EditorSelection {} .EditorRows {} :root:has(.AiNativeLayout) {} :root:has(.AiNativeLayout) .QuickPick {}'
                 css.write_text(original_css)
@@ -80,6 +87,9 @@ class BenchmarkTest(unittest.TestCase):
                 control.write_text('control')
                 observed = []
                 def measure(*args, **kwargs):
+                    if historical:
+                        self.assertEqual(args[0]['version'], 'historical')
+                        self.assertIn('lvce-historical', args[0]['binary'])
                     observed.append(installed.read_text())
                     ai_observed.append(':root.DiagnosticAiNativeLayout' in css.read_text())
                     page_observed.append(page.read_text() == candidate.CSS_DEDUP_REPLACEMENT)
@@ -94,6 +104,8 @@ class BenchmarkTest(unittest.TestCase):
                         '--label', label, '--control-bundle', str(control), '--control-revision', 'control-sha',
                         '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
                         '--pointer-render', '--renderer-revision', 'reviewed-renderer', '--editor-overlay']
+                if historical:
+                    argv.append('--historical-artifact')
                 if ai_ablation:
                     argv += ['--disable-ai-root-selectors', '--control-css-dedup']
                 if css_dedup:
@@ -111,6 +123,7 @@ class BenchmarkTest(unittest.TestCase):
                         candidate.main()
                 self.assertEqual(page.read_text(), candidate.CSS_DEDUP_ANCHOR)
                 self.assertEqual(installed.read_text(), 'original')
+                self.assertEqual(current.read_text(), 'current release unchanged')
                 self.assertEqual(renderer.read_text(), original_renderer)
                 self.assertEqual(css.read_text(), original_css)
                 if not fail:

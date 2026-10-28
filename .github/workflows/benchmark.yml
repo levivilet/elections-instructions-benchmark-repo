@@ -58,6 +58,9 @@ jobs:
           bash scripts/install-input.sh
       - name: Install pinned ARM artifact
         run: python3 scripts/install.py --editors "${{ matrix.editor }}"
+      - name: Install original diagnostic frontend separately
+        if: matrix.editor == 'lvce'
+        run: python3 scripts/install.py --historical-lvce
       - uses: actions/checkout@v5
         if: matrix.editor == 'lvce'
         with:

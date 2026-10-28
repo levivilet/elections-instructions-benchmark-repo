@@ -56,7 +56,16 @@ def extract(entry, archive, destination):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--editors", default=None, help="comma-separated editor ids")
+    parser.add_argument("--historical-lvce", action="store_true", help="install the original diagnostic context separately")
     args = parser.parse_args()
+    if args.historical_lvce:
+        entry = json.loads((ROOT / "config/historical-lvce.lock.json").read_text())
+        target = ROOT / ".tmp/apps"
+        target.mkdir(parents=True, exist_ok=True)
+        archive = target / entry["archive"]
+        download(entry, archive)
+        extract(entry, archive, target / "lvce-historical")
+        return
     entries = json.loads(LOCK.read_text())
     by_id = {entry["id"]: entry for entry in entries}
     ids = list(by_id) if args.editors is None else args.editors.split(",")

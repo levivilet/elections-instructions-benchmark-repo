@@ -93,22 +93,22 @@ if [ "${1:-}" != --validate-input ]; then
   if [ -n "${BENCHMARK_CANDIDATE_BUNDLE:-}" ]; then
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_BASELINE_BUNDLE" --revision a45322d60d92a59d80dec53d0b369338136145c7 --label baseline
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_BASELINE_BUNDLE" --revision a45322d60d92a59d80dec53d0b369338136145c7 --label baseline --historical-artifact
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_DEPENDENCY_BUNDLE" --revision d4662b53cd745270bc4622b99d84d5eef218cdab --label dependency
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_DEPENDENCY_BUNDLE" --revision d4662b53cd745270bc4622b99d84d5eef218cdab --label dependency --historical-artifact
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_TOKEN_BUNDLE" --revision "$BENCHMARK_CONTROL_REVISION" --label token
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_TOKEN_BUNDLE" --revision "$BENCHMARK_CONTROL_REVISION" --label token --historical-artifact
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_PROPERTY_BUNDLE" --revision "$BENCHMARK_CONTROL_REVISION" --label property --virtual-dom-revision d404c1bf0c5c2ec58e3407c0c5943477b03eb992
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_PROPERTY_BUNDLE" --revision "$BENCHMARK_CONTROL_REVISION" --label property --historical-artifact --virtual-dom-revision d404c1bf0c5c2ec58e3407c0c5943477b03eb992
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_FLAT_BUNDLE" --revision "$BENCHMARK_CONTROL_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION" --label flat
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_FLAT_BUNDLE" --revision "$BENCHMARK_CONTROL_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION" --label flat --historical-artifact
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_ROW_BUNDLE" --revision "$BENCHMARK_ROW_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION" --label row
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_ROW_BUNDLE" --revision "$BENCHMARK_ROW_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION" --label row --historical-artifact
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
       python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION"
