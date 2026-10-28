@@ -218,17 +218,25 @@ def disable_status_width_persistence(content):
 MAIN_AREA_CSS_ANCHOR = """const isEqual$2 = (oldState, newState) => {
   return false;
 };"""
+MAIN_AREA_CSS_REPLACEMENT = """const isEqual$2 = (oldState, newState) => {
+  return !oldState.initial && oldState.layout === newState.layout && oldState.width === newState.width && oldState.dragOverlay === newState.dragOverlay && oldState.tabHeight === newState.tabHeight;
+};"""
 MAIN_AREA_EMPTY_ANCHOR = """  const commands = applyRender(oldState, newState, diffResult);
   if (!isConnected()) {"""
+MAIN_AREA_EMPTY_REPLACEMENT = """  const commands = applyRender(oldState, newState, diffResult);
+  if (commands.length === 0 || !isConnected()) {"""
 
 
 def main_area_noop_renderer(content):
-    if content.count(MAIN_AREA_CSS_ANCHOR) != 1 or content.count(MAIN_AREA_EMPTY_ANCHOR) != 1:
-        raise RuntimeError('expected pinned main area CSS and empty render implementations')
-    return content.replace(MAIN_AREA_CSS_ANCHOR, """const isEqual$2 = (oldState, newState) => {
-  return !oldState.initial && oldState.layout === newState.layout && oldState.width === newState.width && oldState.dragOverlay === newState.dragOverlay && oldState.tabHeight === newState.tabHeight;
-};""").replace(MAIN_AREA_EMPTY_ANCHOR, """  const commands = applyRender(oldState, newState, diffResult);
-  if (commands.length === 0 || !isConnected()) {""")
+    old_count = (content.count(MAIN_AREA_CSS_ANCHOR), content.count(MAIN_AREA_EMPTY_ANCHOR))
+    replacement_count = (content.count(MAIN_AREA_CSS_REPLACEMENT), content.count(MAIN_AREA_EMPTY_REPLACEMENT))
+    if old_count == (1, 1) and replacement_count == (0, 0):
+        return content.replace(MAIN_AREA_CSS_ANCHOR, MAIN_AREA_CSS_REPLACEMENT).replace(
+            MAIN_AREA_EMPTY_ANCHOR, MAIN_AREA_EMPTY_REPLACEMENT)
+    if old_count == (0, 0) and replacement_count == (1, 1):
+        # The released main-area-worker already includes both measured no-op guards.
+        return content
+    raise RuntimeError('expected pinned main area CSS and empty render implementations')
 
 
 def main():

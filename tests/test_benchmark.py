@@ -226,6 +226,21 @@ class BenchmarkTest(unittest.TestCase):
         self.assertEqual(candidate.css_dedup_renderer(candidate.CSS_DEDUP_ANCHOR), candidate.CSS_DEDUP_REPLACEMENT)
         self.assertEqual(candidate.css_dedup_renderer(candidate.CSS_DEDUP_REPLACEMENT), candidate.CSS_DEDUP_REPLACEMENT)
 
+    def test_main_area_probe_accepts_old_and_already_patched_workers_only(self):
+        old = candidate.MAIN_AREA_CSS_ANCHOR + '\n' + candidate.MAIN_AREA_EMPTY_ANCHOR
+        patched = candidate.MAIN_AREA_CSS_REPLACEMENT + '\n' + candidate.MAIN_AREA_EMPTY_REPLACEMENT
+        self.assertEqual(candidate.main_area_noop_renderer(old), patched)
+        self.assertEqual(candidate.main_area_noop_renderer(patched), patched)
+        for content in [
+            '',
+            old * 2,
+            patched * 2,
+            candidate.MAIN_AREA_CSS_ANCHOR + '\n' + candidate.MAIN_AREA_EMPTY_REPLACEMENT,
+            candidate.MAIN_AREA_CSS_REPLACEMENT + '\n' + candidate.MAIN_AREA_EMPTY_ANCHOR,
+        ]:
+            with self.assertRaisesRegex(RuntimeError, 'expected pinned main area CSS'):
+                candidate.main_area_noop_renderer(content)
+
     def test_ai_root_probe_requires_two_known_selectors(self):
         selector = b':root:has(.AiNativeLayout)'
         for count in [0, 1, 3]:
