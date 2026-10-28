@@ -209,6 +209,22 @@ def disable_status_width_persistence(content):
     return content.replace(STATUS_WIDTH_CACHE_ANCHOR, 'const getWidth = async text => undefined;\nconst setWidth = async (text, width) => {};')
 
 
+MAIN_AREA_CSS_ANCHOR = """const isEqual$2 = (oldState, newState) => {
+  return false;
+};"""
+MAIN_AREA_EMPTY_ANCHOR = """  const commands = applyRender(oldState, newState, diffResult);
+  if (!isConnected()) {"""
+
+
+def main_area_noop_renderer(content):
+    if content.count(MAIN_AREA_CSS_ANCHOR) != 1 or content.count(MAIN_AREA_EMPTY_ANCHOR) != 1:
+        raise RuntimeError('expected pinned main area CSS and empty render implementations')
+    return content.replace(MAIN_AREA_CSS_ANCHOR, """const isEqual$2 = (oldState, newState) => {
+  return !oldState.initial && oldState.layout === newState.layout && oldState.width === newState.width && oldState.dragOverlay === newState.dragOverlay && oldState.tabHeight === newState.tabHeight;
+};""").replace(MAIN_AREA_EMPTY_ANCHOR, """  const commands = applyRender(oldState, newState, diffResult);
+  if (commands.length === 0 || !isConnected()) {""")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--perf', required=True)
@@ -239,8 +255,15 @@ def main():
     parser.add_argument('--historical-artifact', action='store_true', help='use the separately pinned original frontend for historical worker controls')
     parser.add_argument('--status-worker-bundle', type=Path)
     parser.add_argument('--status-worker-version')
+    parser.add_argument('--control-status-worker', action='store_true')
+    parser.add_argument('--main-area-noop', action='store_true')
+    parser.add_argument('--main-area-revision')
     parser.add_argument('--disable-status-width-persistence', action='store_true', help='diagnostic only: measure status labels without persistent width cache')
     args = parser.parse_args()
+    if args.main_area_noop and not args.main_area_revision:
+        parser.error('main area patch requires reviewed revision')
+    if args.control_status_worker and not args.status_worker_bundle:
+        parser.error('control status worker requires released bundle')
     if args.status_worker_bundle and (not args.status_worker_version or args.disable_status_width_persistence):
         parser.error('released status bundle requires version and cannot combine with cache ablation')
     if args.control_bundle and (not args.control_revision or args.response or args.allocation_profile or args.native_profile or args.cpu_profile):
@@ -301,6 +324,15 @@ def main():
         status_target = status_workers[0]
         status_original = status_target.read_bytes()
         status_candidate = args.status_worker_bundle.read_bytes() if args.status_worker_bundle else disable_status_width_persistence(status_original.decode()).encode()
+    main_area_target = None
+    main_area_original = main_area_candidate = None
+    if args.main_area_noop:
+        main_areas = list(static_root.glob('*/packages/main-area-worker/dist/mainAreaWorkerMain.js'))
+        if len(main_areas) != 1:
+            raise RuntimeError(f'expected one installed main area worker, got {main_areas}')
+        main_area_target = main_areas[0]
+        main_area_original = main_area_target.read_bytes()
+        main_area_candidate = main_area_noop_renderer(main_area_original.decode()).encode()
     plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render, args.editor_overlay or args.text_layer or args.disable_ai_root_selectors)]
     if args.control_bundle:
         plans.insert(0, (args.control_label, args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision, args.control_pointer_render or (args.pointer_render if args.label == 'without-status' else False), False))
@@ -317,8 +349,10 @@ def main():
                        'immediateRender': args.immediate_render and label == args.label,
                        'editorStylesSha256': hashlib.sha256(css_candidate if editor_overlay else css_original).hexdigest() if css_original else None,
                        'diagnosticStatusWidthPersistenceDisabled': args.disable_status_width_persistence and label == args.label,
-                       'statusWorkerVersion': args.status_worker_version if args.status_worker_bundle and label == args.label else None,
-                       'statusWorkerBundleSha256': hashlib.sha256(status_candidate if label == args.label else status_original).hexdigest() if status_original else None,
+                       'mainAreaPatchRevision': args.main_area_revision if args.main_area_noop and label == args.label else None,
+                       'mainAreaBundleSha256': hashlib.sha256(main_area_candidate if label == args.label else main_area_original).hexdigest() if main_area_original else None,
+                       'statusWorkerVersion': args.status_worker_version if args.status_worker_bundle and (label == args.label or args.control_status_worker) else None,
+                       'statusWorkerBundleSha256': hashlib.sha256(status_candidate if label == args.label or args.control_status_worker else status_original).hexdigest() if status_original else None,
                        'diagnosticStatusSuppressed': label == 'without-status',
                        'diagnosticLineDecorationsSuppressed': label == 'without-line-decorations',
                        'rendererPatchRevision': args.renderer_revision if pointer_render or args.immediate_render else None,
@@ -341,8 +375,10 @@ def main():
                 ordered = plans if repeat % 2 else list(reversed(plans))
                 for label, bundle, revision, _virtual_dom_revision, pointer_render, editor_overlay in ordered:
                     shutil.copyfile(bundle, target)
+                    if main_area_target:
+                        main_area_target.write_bytes(main_area_candidate if label == args.label else main_area_original)
                     if status_target:
-                        status_target.write_bytes(status_candidate if label == args.label else status_original)
+                        status_target.write_bytes(status_candidate if label == args.label or args.control_status_worker else status_original)
                     if renderer_target:
                         renderer_target.write_bytes(renderer_candidate if label == args.label else renderer_pointer if pointer_render else renderer_original)
                     if page_target:
@@ -373,6 +409,8 @@ def main():
                         raise RuntimeError(f'invalid candidate trial: {result}')
         finally:
             shutil.copyfile(backup, target)
+            if main_area_target:
+                main_area_target.write_bytes(main_area_original)
             if status_target:
                 status_target.write_bytes(status_original)
             if renderer_target:

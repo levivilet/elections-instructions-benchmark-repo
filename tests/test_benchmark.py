@@ -51,7 +51,7 @@ def result(editor, counts=(100, 300, 200)):
 class BenchmarkTest(unittest.TestCase):
     def test_paired_candidates_alternate_and_restore_the_installed_bundle(self):
         cases = [(f, a, c, i, False, False, False, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True, False, False, False), (True, False, True, False, True, False, False, False), (False, False, True, False, False, True, False, False), (True, False, True, False, False, True, False, False), (False, False, True, False, False, False, True, False), (True, False, True, False, False, False, True, False), (False, False, True, False, False, False, True, True), (True, False, True, False, False, False, True, True)]
-        for historical, width_persistence, case in [(h, w, case) for h in [False, True] for w in [False, True, "released"] for case in cases]:
+        for historical, width_persistence, main_noop, case in [(h, w, m, case) for h in [False, True] for w in [False, True, "released"] for m in [False, True] for case in cases]:
             fail, status_ablation, control_pointer, immediate, line_ablation, text_layer, css_dedup, ai_ablation = case
             with self.subTest(fail=fail, status_ablation=status_ablation, control_pointer=control_pointer), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -75,6 +75,11 @@ class BenchmarkTest(unittest.TestCase):
                 status_worker = root / f'{app}/usr/lib/lvce/resources/app/static/test/packages/status-bar-worker/dist/statusBarWorkerMain.js'
                 status_worker.parent.mkdir(parents=True)
                 status_worker.write_text(candidate.STATUS_WIDTH_CACHE_ANCHOR)
+                main_worker = root / f'{app}/usr/lib/lvce/resources/app/static/test/packages/main-area-worker/dist/mainAreaWorkerMain.js'
+                main_worker.parent.mkdir(parents=True)
+                original_main = candidate.MAIN_AREA_CSS_ANCHOR + candidate.MAIN_AREA_EMPTY_ANCHOR
+                main_worker.write_text(original_main)
+                main_observed = []
                 status_observed = []
                 page_observed = []
                 immediate_observed = []
@@ -94,6 +99,7 @@ class BenchmarkTest(unittest.TestCase):
                     if historical:
                         self.assertEqual(args[0]['version'], 'historical')
                         self.assertIn('lvce-historical', args[0]['binary'])
+                    main_observed.append(main_worker.read_text() != original_main)
                     status_observed.append(status_worker.read_text() != candidate.STATUS_WIDTH_CACHE_ANCHOR)
                     observed.append(installed.read_text())
                     ai_observed.append(':root.DiagnosticAiNativeLayout' in css.read_text())
@@ -109,10 +115,14 @@ class BenchmarkTest(unittest.TestCase):
                         '--label', label, '--control-bundle', str(control), '--control-revision', 'control-sha',
                         '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
                         '--pointer-render', '--renderer-revision', 'reviewed-renderer', '--editor-overlay']
+                if main_noop:
+                    argv += ['--main-area-noop', '--main-area-revision', 'reviewed-main-area']
                 if width_persistence == 'released':
                     released_status = root / 'released-status.js'
                     released_status.write_text('released status source')
                     argv += ['--status-worker-bundle', str(released_status), '--status-worker-version', '3.35.3']
+                    if main_noop:
+                        argv.append('--control-status-worker')
                 elif width_persistence:
                     argv.append('--disable-status-width-persistence')
                 if historical:
@@ -136,10 +146,12 @@ class BenchmarkTest(unittest.TestCase):
                 self.assertEqual(installed.read_text(), 'original')
                 self.assertEqual(current.read_text(), 'current release unchanged')
                 self.assertEqual(status_worker.read_text(), candidate.STATUS_WIDTH_CACHE_ANCHOR)
+                self.assertEqual(main_worker.read_text(), original_main)
                 self.assertEqual(renderer.read_text(), original_renderer)
                 self.assertEqual(css.read_text(), original_css)
                 if not fail:
-                    self.assertEqual(status_observed, [False, True, True, False, False, True] if width_persistence else [False] * 6)
+                    self.assertEqual(main_observed, [False, True, True, False, False, True] if main_noop else [False] * 6)
+                    self.assertEqual(status_observed, [True] * 6 if main_noop and width_persistence == 'released' else [False, True, True, False, False, True] if width_persistence else [False] * 6)
                     self.assertEqual(page_observed, [True] * 6 if ai_ablation else [False, True, True, False, False, True] if css_dedup else [False] * 6)
                     self.assertEqual(ai_observed, [False, True, True, False, False, True] if ai_ablation else [False] * 6)
                     self.assertEqual(observed, ['control', 'candidate', 'candidate', 'control', 'control', 'candidate'])
@@ -149,7 +161,7 @@ class BenchmarkTest(unittest.TestCase):
                     for output_label, revision in [(label, 'candidate-sha'), ('paired-flat', 'control-sha')]:
                         output = json.loads((root / f'results/diagnostics/{output_label}.json').read_text())
                         self.assertEqual(output['workerRevision'], revision)
-                        self.assertEqual(output['statusWorkerVersion'], '3.35.3' if width_persistence == 'released' and output_label != 'paired-flat' else None)
+                        self.assertEqual(output['statusWorkerVersion'], '3.35.3' if width_persistence == 'released' and (output_label != 'paired-flat' or main_noop) else None)
                         self.assertEqual(output['diagnosticStatusWidthPersistenceDisabled'], width_persistence is True and output_label != 'paired-flat')
                         self.assertEqual(output['virtualDomRevision'], 'old-diff' if output_label == 'paired-flat' else 'new-diff')
                         self.assertEqual(output['pointerRender'], status_ablation or control_pointer or output_label != 'paired-flat')
@@ -162,6 +174,13 @@ class BenchmarkTest(unittest.TestCase):
                         self.assertEqual(output['diagnosticStatusSuppressed'], output_label == 'without-status')
                         self.assertEqual(len(output['trials']), 3)
                         self.assertEqual(len(output['sequence']), 6)
+
+    def test_main_area_backport_requires_both_exact_implementations(self):
+        content = candidate.MAIN_AREA_CSS_ANCHOR + candidate.MAIN_AREA_EMPTY_ANCHOR
+        for invalid in ['', content * 2, candidate.MAIN_AREA_CSS_ANCHOR, candidate.MAIN_AREA_EMPTY_ANCHOR]:
+            with self.assertRaisesRegex(RuntimeError, 'pinned main area'):
+                candidate.main_area_noop_renderer(invalid)
+        self.assertIn('commands.length === 0', candidate.main_area_noop_renderer(content))
 
     def test_status_width_cache_probe_requires_exact_known_implementation(self):
         for content in ['', candidate.STATUS_WIDTH_CACHE_ANCHOR * 2]:
