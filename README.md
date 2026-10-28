@@ -86,3 +86,7 @@ Every pull request runs hardware-accounting acceptance, all eight editor trials,
 and the complete-report regression checks on the ARM runner matrix. Main pushes,
 scheduled runs, and manual runs publish three trials per editor and deploy the
 validated report to GitHub Pages. CI does not publish a partial matrix.
+
+The [selection investigation](docs/selection-investigation.md) records the
+source candidates, comparable measurements, diagnostic limits and remaining
+performance acceptance work.

@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
-from wayland import (clipboard_after_copy, ctrl, double_click_command,
+from wayland import (click, clipboard_after_copy, ctrl, double_click_command,
                      focus, focused_window, move_pointer, read_clipboard,
                      set_clipboard, visible_window)
 
@@ -14,13 +14,50 @@ TEXT = ('selectiontarget ' * 8 + '\n') * 60
 
 def main():
     if '--client' in sys.argv:
+        import ctypes
         import gi
         gi.require_version('Gtk', '3.0')
-        from gi.repository import Gtk, GLib
+        from gi.repository import Gtk, GLib, GObject
         window = Gtk.Window(title='Wayland input acceptance')
         view = Gtk.TextView()
         view.set_monospace(True)
         view.get_buffer().set_text(TEXT)
+        # GTK represents mouse sequences as NULL, but GTK3's introspection
+        # annotation incorrectly rejects None for get_sequence_state().
+        gtk = ctypes.CDLL('libgtk-3.so.0')
+        gtk.gtk_gesture_get_sequence_state.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        gtk.gtk_gesture_get_sequence_state.restype = ctypes.c_int
+        pointer = ctypes.pythonapi.PyCapsule_GetPointer
+        pointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
+        pointer.restype = ctypes.c_void_p
+        def record(data):
+            with Path('results/wayland-client-events.jsonl').open('a') as stream:
+                stream.write(json.dumps(dict(data, monotonic=time.monotonic())) + '\n')
+        observed_gestures = set()
+        def record_gesture(gesture, n_press, x, y):
+            if gesture.get_widget() != view:
+                return True
+            if gesture not in observed_gestures:
+                observed_gestures.add(gesture)
+                gesture.connect('stopped', lambda current: record(dict(gesture='stopped')))
+                gesture.connect('sequence-state-changed', lambda current, sequence, state:
+                                record(dict(gesture='sequence-state-changed', state=int(state))))
+            sequence = gesture.get_current_sequence()
+            event = gesture.get_last_event(sequence)
+            source = event.get_source_device() if event else None
+            record(dict(gesture='pressed', count=n_press, x=x, y=y,
+                        sequenceState=(str(gesture.get_sequence_state(sequence)) if sequence else
+                                       gtk.gtk_gesture_get_sequence_state(pointer(gesture.__gpointer__, None), None)),
+                        active=gesture.is_active(), recognized=gesture.is_recognized(),
+                        button=gesture.get_current_button(),
+                        eventTime=event.get_time() if event else None,
+                        source=str(source.get_source()) if source else None,
+                        sourceName=source.get_name() if source else None))
+            return True
+        GObject.add_emission_hook(Gtk.GestureMultiPress, 'pressed', record_gesture)
+        settings = view.get_settings()
+        record(dict(doubleClickTime=settings.get_property('gtk-double-click-time'),
+                    doubleClickDistance=settings.get_property('gtk-double-click-distance')))
         def record_click(widget, event):
             event_data = dict(type=str(event.type), x=event.x, y=event.y,
                               button=event.button, state=int(event.state), time=event.time,
@@ -29,8 +66,7 @@ def main():
                 buffer = view.get_buffer()
                 bounds = buffer.get_selection_bounds()
                 selection = buffer.get_text(*bounds, True) if bounds else None
-                with Path('results/wayland-client-events.jsonl').open('a') as stream:
-                    stream.write(json.dumps(dict(event_data, selection=selection)) + '\n')
+                record(dict(event_data, selection=selection))
                 return False
             GLib.idle_add(record_selection)
             return False
@@ -80,9 +116,13 @@ def main():
         x, y = layout['target']
         focus(window)
         time.sleep(.2)
-        # Compositor focus plus the client's initial text focus is sufficient.
-        # Exercise exactly two button presses, without priming GTK's separate
-        # multi-press gesture state with a third focus click.
+        # Establish native pointer focus separately: a cold GTK client can
+        # consume the first injected press during activation. Keep this click
+        # spatially separate and beyond GTK's multi-press interval, so the
+        # following double-click cannot become a triple-click.
+        move_pointer(window, x + 80, y)
+        click()
+        time.sleep(.6)
         move_pointer(window, x, y)
         focused = focused_window([child.pid])
         if not focused:

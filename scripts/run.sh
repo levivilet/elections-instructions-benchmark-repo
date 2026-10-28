@@ -79,4 +79,53 @@ if [ "${1:-}" != --validate-input ]; then
   sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET,BENCHMARK_RUN_URL,BENCHMARK_COMMIT,BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS \
     env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
     python3 scripts/benchmark.py --editor "$1" --perf "$2" --repeats 3
+  # Reuse this verified desktop: restarting uinput daemons on the same host
+  # can leave compositor input state from the preceding session. Every editor
+  # trial still launches a new process tree with a fresh application profile.
+  if [ "${BENCHMARK_DIAGNOSE:-0}" = 1 ]; then
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/response.py --editor "$1" --perf "$2"
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET,BENCHMARK_JAVASCRIPT_PROFILE,BENCHMARK_ALLOCATION_PROFILE \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/diagnose.py --editor "$1" --perf "$2"
+  fi
+  if [ -n "${BENCHMARK_CANDIDATE_BUNDLE:-}" ]; then
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_BASELINE_BUNDLE" --revision a45322d60d92a59d80dec53d0b369338136145c7 --label baseline --historical-artifact
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_DEPENDENCY_BUNDLE" --revision d4662b53cd745270bc4622b99d84d5eef218cdab --label dependency --historical-artifact
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_TOKEN_BUNDLE" --revision "$BENCHMARK_CONTROL_REVISION" --label token --historical-artifact
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_PROPERTY_BUNDLE" --revision "$BENCHMARK_CONTROL_REVISION" --label property --historical-artifact --virtual-dom-revision d404c1bf0c5c2ec58e3407c0c5943477b03eb992
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_FLAT_BUNDLE" --revision "$BENCHMARK_CONTROL_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION" --label flat --historical-artifact
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_ROW_BUNDLE" --revision "$BENCHMARK_ROW_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION" --label row --historical-artifact
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --status-worker-bundle "$PWD/.tmp/released-status-worker/package/dist/statusBarWorkerMain.js" --status-worker-version 3.35.3 --main-area-noop --main-area-revision de916f28ad66dc2e1112ba38359c583f9b4bd022
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --label paired-candidate --control-bundle "$BENCHMARK_OFFICIAL_CONTROL_BUNDLE" --control-revision "$BENCHMARK_OFFICIAL_CONTROL_REVISION" --status-worker-bundle "$PWD/.tmp/released-status-worker/package/dist/statusBarWorkerMain.js" --status-worker-version 3.35.3 --main-area-noop --main-area-revision de916f28ad66dc2e1112ba38359c583f9b4bd022 --control-virtual-dom-revision bundled-with-lvce-v0.126.12
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --label response --response --status-worker-bundle "$PWD/.tmp/released-status-worker/package/dist/statusBarWorkerMain.js" --status-worker-version 3.35.3 --main-area-noop --main-area-revision de916f28ad66dc2e1112ba38359c583f9b4bd022
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --label allocations --allocation-profile --status-worker-bundle "$PWD/.tmp/released-status-worker/package/dist/statusBarWorkerMain.js" --status-worker-version 3.35.3 --main-area-noop --main-area-revision de916f28ad66dc2e1112ba38359c583f9b4bd022
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --label native --native-profile --status-worker-bundle "$PWD/.tmp/released-status-worker/package/dist/statusBarWorkerMain.js" --status-worker-version 3.35.3 --main-area-noop --main-area-revision de916f28ad66dc2e1112ba38359c583f9b4bd022
+    sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
+      env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --label threads --thread-profile --status-worker-bundle "$PWD/.tmp/released-status-worker/package/dist/statusBarWorkerMain.js" --status-worker-version 3.35.3 --main-area-noop --main-area-revision de916f28ad66dc2e1112ba38359c583f9b4bd022
+  fi
 fi

@@ -58,11 +58,164 @@ jobs:
           bash scripts/install-input.sh
       - name: Install pinned ARM artifact
         run: python3 scripts/install.py --editors "${{ matrix.editor }}"
+      - name: Verify released status worker candidate
+        if: matrix.editor == 'lvce'
+        run: |
+          mkdir -p .tmp/released-status-worker
+          npm pack --ignore-scripts @lvce-editor/status-bar-worker@3.35.3 --pack-destination .tmp/released-status-worker
+          python3 - <<'PYTHON'
+          import base64, hashlib
+          from pathlib import Path
+          archive = Path('.tmp/released-status-worker/lvce-editor-status-bar-worker-3.35.3.tgz')
+          expected = 'HLeh6VhauZmxS3VhrCiwXVaCR/AE09PBFI3obcCayPEbgyZSH3rCyYzHAhCZyslxPXzTF+IiBLQgi+pSSlqHmg=='
+          assert base64.b64encode(hashlib.sha512(archive.read_bytes()).digest()).decode() == expected
+          PYTHON
+          tar -xzf .tmp/released-status-worker/lvce-editor-status-bar-worker-3.35.3.tgz -C .tmp/released-status-worker
+          node -e "if (require('./.tmp/released-status-worker/package/package.json').version !== '3.35.3') process.exit(1)"
+      - name: Install original diagnostic frontend separately
+        if: matrix.editor == 'lvce'
+        run: python3 scripts/install.py --historical-lvce
+      - uses: actions/checkout@v5
+        if: matrix.editor == 'lvce'
+        with:
+          repository: lvce-editor/editor-worker
+          ref: 694001f4c388e7a4099275092db5cce7e834f49e
+          path: .tmp/candidate-worker
+      - uses: actions/checkout@v5
+        if: matrix.editor == 'lvce'
+        with:
+          repository: lvce-editor/virtual-dom
+          ref: 9b271c2bf2f0ece8e193eaeae76761c85776c8c1
+          path: .tmp/candidate-virtual-dom
+      - uses: actions/checkout@v5
+        if: matrix.editor == 'lvce'
+        with:
+          repository: lvce-editor/virtual-dom
+          ref: 4c00282f940199629d6f440e7afb43369b76ba1a
+          path: .tmp/skip-virtual-dom
+      - uses: actions/setup-node@v6
+        if: matrix.editor == 'lvce'
+        with:
+          node-version-file: .tmp/candidate-worker/.nvmrc
+      - name: Build identified diagnostic candidate
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/candidate-worker
+        run: |
+          nice npm ci
+          npm run build
+          cp .tmp/dist/dist/editorWorkerMain.js ../tokenWorkerMain.js
+      - name: Build identified virtual DOM diagnostic
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/candidate-virtual-dom
+        run: |
+          nice npm ci
+          npm run build
+      - name: Build unchanged-subtree diagnostic
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/skip-virtual-dom
+        run: |
+          nice npm ci
+          npm run build
+      - name: Bundle isolated property-comparison diagnostic
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/candidate-worker
+        run: |
+          # Override only this compiled module, retaining the worker's locked
+          # dependency tree. This unreleased diagnostic cannot enter the report.
+          cp ../candidate-virtual-dom/dist/virtual-dom-worker/dist/parts/VirtualDomDiffTree/CompareNodes.js node_modules/@lvce-editor/virtual-dom-worker/dist/parts/VirtualDomDiffTree/CompareNodes.js
+          npm run build
+          cp .tmp/dist/dist/editorWorkerMain.js ../propertyWorkerMain.js
+          for module in DiffFlatTrees DiffTrees VirtualDomDiffTree; do
+            cp "../candidate-virtual-dom/dist/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js" "node_modules/@lvce-editor/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js"
+          done
+          npm run build
+      - uses: actions/checkout@v5
+        if: matrix.editor == 'lvce'
+        with:
+          repository: lvce-editor/editor-worker
+          ref: 7291fd4e62e58a73cf84c85a5f8852e125b59935
+          path: .tmp/row-worker
+      - name: Build identified row-cache candidate
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/row-worker
+        run: |
+          nice npm ci
+          for module in CompareNodes DiffFlatTrees DiffTrees VirtualDomDiffTree; do
+            cp "../candidate-virtual-dom/dist/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js" "node_modules/@lvce-editor/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js"
+          done
+          npm run build
+      - uses: actions/checkout@v5
+        if: matrix.editor == 'lvce'
+        with:
+          repository: lvce-editor/editor-worker
+          ref: c9f2b67f6044d483881fa8be6b056009eaed317c
+          path: .tmp/monospace-worker
+      - name: Build combined pointer-render candidate
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/monospace-worker
+        run: |
+          nice npm ci
+          for module in CompareNodes DiffFlatTrees DiffTrees VirtualDomDiffTree; do
+            cp "../skip-virtual-dom/dist/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js" "node_modules/@lvce-editor/virtual-dom-worker/dist/parts/VirtualDomDiffTree/$module.js"
+          done
+          npm run build
+      - name: Save unmodified release worker control
+        if: matrix.editor == 'lvce'
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import shutil
+          targets = list(Path('.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/packages/editor-worker/dist/editorWorkerMain.js'))
+          assert len(targets) == 1, targets
+          shutil.copyfile(targets[0], '.tmp/officialWorkerMain.js')
+          PYTHON
+      - uses: actions/checkout@v5
+        if: matrix.editor == 'lvce'
+        with:
+          repository: lvce-editor/editor-worker
+          ref: d4662b53cd745270bc4622b99d84d5eef218cdab
+          path: .tmp/dependency-worker
+      - name: Build dependency-only control
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/dependency-worker
+        run: |
+          nice npm ci
+          npm run build
+      - uses: actions/checkout@v5
+        if: matrix.editor == 'lvce'
+        with:
+          repository: lvce-editor/editor-worker
+          ref: a45322d60d92a59d80dec53d0b369338136145c7
+          path: .tmp/baseline-worker
+      - name: Build matching source baseline
+        if: matrix.editor == 'lvce'
+        working-directory: .tmp/baseline-worker
+        run: |
+          nice npm ci
+          npm run build
       - name: Measure three fresh-profile word selections
         env:
           BENCHMARK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BENCHMARK_COMMIT: ${{ github.sha }}
           BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS: ${{ github.event.inputs.zed_post_open_settle_seconds || '10' }}
+          BENCHMARK_DIAGNOSE: ${{ (matrix.editor == 'lvce' || matrix.editor == 'codemirror5') && '1' || '0' }}
+          BENCHMARK_ALLOCATION_PROFILE: '1'
+          BENCHMARK_CANDIDATE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/monospace-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
+          BENCHMARK_CANDIDATE_REVISION: c9f2b67f6044d483881fa8be6b056009eaed317c
+          BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION: 4c00282f940199629d6f440e7afb43369b76ba1a
+          BENCHMARK_OFFICIAL_CONTROL_REVISION: bundled-with-lvce-v0.126.12
+          BENCHMARK_RENDERER_REVISION: 337459f154e11dbcae294b7c52cd34bded752d67
+          BENCHMARK_RENDERER_PROCESS_REVISION: 5403d5f3651363528ebcb6d6b28501d8e8307a8d
+          BENCHMARK_OFFICIAL_CONTROL_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/officialWorkerMain.js', github.workspace) || '' }}
+          BENCHMARK_ROW_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/row-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
+          BENCHMARK_ROW_REVISION: 7291fd4e62e58a73cf84c85a5f8852e125b59935
+          BENCHMARK_CONTROL_REVISION: 694001f4c388e7a4099275092db5cce7e834f49e
+          BENCHMARK_VIRTUAL_DOM_REVISION: 9b271c2bf2f0ece8e193eaeae76761c85776c8c1
+          BENCHMARK_FLAT_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/candidate-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
+          BENCHMARK_PROPERTY_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/propertyWorkerMain.js', github.workspace) || '' }}
+          BENCHMARK_TOKEN_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/tokenWorkerMain.js', github.workspace) || '' }}
+          BENCHMARK_DEPENDENCY_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/dependency-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
+          BENCHMARK_BASELINE_BUNDLE: ${{ matrix.editor == 'lvce' && format('{0}/.tmp/baseline-worker/.tmp/dist/dist/editorWorkerMain.js', github.workspace) || '' }}
         run: |
           echo "Zed post-open settling: ${BENCHMARK_ZED_POST_OPEN_SETTLE_SECONDS}s"
           PERF=$(find -L /usr/lib/linux-tools -name perf -type f | sort | tail -n 1)

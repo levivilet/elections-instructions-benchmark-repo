@@ -1,4 +1,5 @@
 import copy
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,7 @@ from benchmark import (CLIPBOARD_SENTINEL_PREFIX, DOUBLE_CLICK_DELAY_MS, FIXTURE
 from wayland import main_windows, move_pointer
 from counters import Capture, parse_counter
 import report
+import candidate
 from install import BUILD_APPS
 
 
@@ -47,6 +49,189 @@ def result(editor, counts=(100, 300, 200)):
 
 
 class BenchmarkTest(unittest.TestCase):
+    def test_paired_candidates_alternate_and_restore_the_installed_bundle(self):
+        cases = [(f, a, c, i, False, False, False, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True, False, False, False), (True, False, True, False, True, False, False, False), (False, False, True, False, False, True, False, False), (True, False, True, False, False, True, False, False), (False, False, True, False, False, False, True, False), (True, False, True, False, False, False, True, False), (False, False, True, False, False, False, True, True), (True, False, True, False, False, False, True, True)]
+        for historical, width_persistence, main_noop, case in [(h, w, m, case) for h in [False, True] for w in [False, True, "released"] for m in [False, True] for case in cases]:
+            fail, status_ablation, control_pointer, immediate, line_ablation, text_layer, css_dedup, ai_ablation = case
+            with self.subTest(fail=fail, status_ablation=status_ablation, control_pointer=control_pointer), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / 'config').mkdir()
+                (root / 'config/editors.lock.json').write_text('[{"id":"lvce"}]')
+                (root / 'config/historical-lvce.lock.json').write_text('{"id":"lvce","version":"historical","binary":"usr/lib/lvce/lvce"}')
+                app = '.tmp/apps/lvce-historical' if historical else '.tmp/apps/lvce'
+                current = root / '.tmp/apps/lvce/current-release-sentinel'
+                current.parent.mkdir(parents=True, exist_ok=True)
+                current.write_text('current release unchanged')
+                installed = root / f'{app}/usr/lib/lvce/resources/app/static/test/packages/editor-worker/dist/editorWorkerMain.js'
+                installed.parent.mkdir(parents=True)
+                installed.write_text('original')
+                renderer = root / f'{app}/usr/lib/lvce/resources/app/static/test/packages/renderer-worker/dist/rendererWorkerMain.js'
+                renderer.parent.mkdir(parents=True)
+                original_renderer = candidate.POINTER_RENDER_ANCHOR + (Path(__file__).parent / 'fixtures/pinned-render-barrier.js').read_text()
+                renderer.write_text(original_renderer)
+                page = root / f'{app}/usr/lib/lvce/resources/app/static/test/packages/renderer-process/dist/rendererProcessMain.js'
+                page.parent.mkdir(parents=True)
+                page.write_text(candidate.CSS_DEDUP_ANCHOR)
+                status_worker = root / f'{app}/usr/lib/lvce/resources/app/static/test/packages/status-bar-worker/dist/statusBarWorkerMain.js'
+                status_worker.parent.mkdir(parents=True)
+                status_worker.write_text(candidate.STATUS_WIDTH_CACHE_ANCHOR)
+                main_worker = root / f'{app}/usr/lib/lvce/resources/app/static/test/packages/main-area-worker/dist/mainAreaWorkerMain.js'
+                main_worker.parent.mkdir(parents=True)
+                original_main = candidate.MAIN_AREA_CSS_ANCHOR + candidate.MAIN_AREA_EMPTY_ANCHOR
+                main_worker.write_text(original_main)
+                main_observed = []
+                status_observed = []
+                page_observed = []
+                immediate_observed = []
+                pointer_observed = []
+                css = root / f'{app}/usr/lib/lvce/resources/app/static/test/css/App.css'
+                css.parent.mkdir(parents=True)
+                original_css = '.EditorLayers {} .EditorSelection {} .EditorRows {} :root:has(.AiNativeLayout) {} :root:has(.AiNativeLayout) .QuickPick {}'
+                css.write_text(original_css)
+                ai_observed = []
+                css_observed = []
+                bundle = root / 'candidate.js'
+                bundle.write_text('candidate')
+                control = root / 'control.js'
+                control.write_text('control')
+                observed = []
+                def measure(*args, **kwargs):
+                    if historical:
+                        self.assertEqual(args[0]['version'], 'historical')
+                        self.assertIn('lvce-historical', args[0]['binary'])
+                    main_observed.append(main_worker.read_text() != original_main)
+                    status_observed.append(status_worker.read_text() != candidate.STATUS_WIDTH_CACHE_ANCHOR)
+                    observed.append(installed.read_text())
+                    ai_observed.append(':root.DiagnosticAiNativeLayout' in css.read_text())
+                    page_observed.append(page.read_text() == candidate.CSS_DEDUP_REPLACEMENT)
+                    immediate_observed.append('if (frame.immediate || isTest())' in renderer.read_text())
+                    css_observed.append(css.read_text().endswith((candidate.TEXT_LAYER_CSS if text_layer else candidate.OVERLAY_CSS).decode()))
+                    pointer_observed.append('Editor.handleMouseDownAndRender' in renderer.read_text())
+                    if fail and len(observed) == 3:
+                        raise RuntimeError('measurement failed')
+                    return trial()
+                label = 'without-line-decorations' if line_ablation else 'without-status' if status_ablation else 'paired-candidate'
+                argv = ['candidate.py', '--perf', 'test', '--bundle', str(bundle), '--revision', 'candidate-sha',
+                        '--label', label, '--control-bundle', str(control), '--control-revision', 'control-sha',
+                        '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
+                        '--pointer-render', '--renderer-revision', 'reviewed-renderer', '--editor-overlay']
+                if main_noop:
+                    argv += ['--main-area-noop', '--main-area-revision', 'reviewed-main-area']
+                if width_persistence == 'released':
+                    released_status = root / 'released-status.js'
+                    released_status.write_text('released status source')
+                    argv += ['--status-worker-bundle', str(released_status), '--status-worker-version', '3.35.3']
+                    if main_noop:
+                        argv += ['--control-status-worker', '--control-main-area-noop']
+                elif width_persistence:
+                    argv.append('--disable-status-width-persistence')
+                if historical:
+                    argv.append('--historical-artifact')
+                if ai_ablation:
+                    argv += ['--disable-ai-root-selectors', '--control-css-dedup']
+                if css_dedup:
+                    argv.remove('--editor-overlay')
+                    argv += ['--css-dedup', '--renderer-process-revision', 'reviewed-page-revision']
+                if text_layer:
+                    argv[argv.index('--editor-overlay')] = '--text-layer'
+                if immediate:
+                    argv.append('--immediate-render')
+                if control_pointer:
+                    argv.append('--control-pointer-render')
+                with contextlib.chdir(root), patch.object(candidate, 'ROOT', root), \
+                        patch.object(candidate, 'trial', side_effect=measure), patch.object(sys, 'argv', argv):
+                    with self.assertRaises(RuntimeError) if fail else contextlib.nullcontext():
+                        candidate.main()
+                self.assertEqual(page.read_text(), candidate.CSS_DEDUP_ANCHOR)
+                self.assertEqual(installed.read_text(), 'original')
+                self.assertEqual(current.read_text(), 'current release unchanged')
+                self.assertEqual(status_worker.read_text(), candidate.STATUS_WIDTH_CACHE_ANCHOR)
+                self.assertEqual(main_worker.read_text(), original_main)
+                self.assertEqual(renderer.read_text(), original_renderer)
+                self.assertEqual(css.read_text(), original_css)
+                if not fail:
+                    self.assertEqual(main_observed, [True] * 6 if main_noop and width_persistence == 'released' else [False, True, True, False, False, True] if main_noop else [False] * 6)
+                    self.assertEqual(status_observed, [True] * 6 if main_noop and width_persistence == 'released' else [False, True, True, False, False, True] if width_persistence else [False] * 6)
+                    self.assertEqual(page_observed, [True] * 6 if ai_ablation else [False, True, True, False, False, True] if css_dedup else [False] * 6)
+                    self.assertEqual(ai_observed, [False, True, True, False, False, True] if ai_ablation else [False] * 6)
+                    self.assertEqual(observed, ['control', 'candidate', 'candidate', 'control', 'control', 'candidate'])
+                    self.assertEqual(immediate_observed, [False, True, True, False, False, True] if immediate else [False] * 6)
+                    self.assertEqual(css_observed, [False] * 6 if css_dedup else [False, True, True, False, False, True])
+                    self.assertEqual(pointer_observed, [True] * 6 if status_ablation or control_pointer else [False, True, True, False, False, True])
+                    for output_label, revision in [(label, 'candidate-sha'), ('paired-flat', 'control-sha')]:
+                        output = json.loads((root / f'results/diagnostics/{output_label}.json').read_text())
+                        self.assertEqual(output['workerRevision'], revision)
+                        self.assertEqual(output['statusWorkerVersion'], '3.35.3' if width_persistence == 'released' and (output_label != 'paired-flat' or main_noop) else None)
+                        self.assertEqual(output['diagnosticStatusWidthPersistenceDisabled'], width_persistence is True and output_label != 'paired-flat')
+                        self.assertEqual(output['virtualDomRevision'], 'old-diff' if output_label == 'paired-flat' else 'new-diff')
+                        self.assertEqual(output['pointerRender'], status_ablation or control_pointer or output_label != 'paired-flat')
+                        self.assertEqual(output['immediateRender'], immediate and output_label != 'paired-flat')
+                        self.assertEqual(output['editorOverlay'], not text_layer and not css_dedup and output_label != 'paired-flat')
+                        self.assertEqual(output['cssDedup'], css_dedup and (output_label != 'paired-flat' or ai_ablation))
+                        self.assertEqual(output['diagnosticAiRootSelectorsDisabled'], ai_ablation and output_label != 'paired-flat')
+                        self.assertEqual(output['textLayer'], text_layer and output_label != 'paired-flat')
+                        self.assertEqual(output['diagnosticLineDecorationsSuppressed'], line_ablation and output_label != 'paired-flat')
+                        self.assertEqual(output['diagnosticStatusSuppressed'], output_label == 'without-status')
+                        self.assertEqual(len(output['trials']), 3)
+                        self.assertEqual(len(output['sequence']), 6)
+
+    def test_main_area_backport_requires_both_exact_implementations(self):
+        content = candidate.MAIN_AREA_CSS_ANCHOR + candidate.MAIN_AREA_EMPTY_ANCHOR
+        for invalid in ['', content * 2, candidate.MAIN_AREA_CSS_ANCHOR, candidate.MAIN_AREA_EMPTY_ANCHOR]:
+            with self.assertRaisesRegex(RuntimeError, 'pinned main area'):
+                candidate.main_area_noop_renderer(invalid)
+        self.assertIn('commands.length === 0', candidate.main_area_noop_renderer(content))
+
+    def test_status_width_cache_probe_requires_exact_known_implementation(self):
+        for content in ['', candidate.STATUS_WIDTH_CACHE_ANCHOR * 2]:
+            with self.assertRaisesRegex(RuntimeError, 'pinned status width cache'):
+                candidate.disable_status_width_persistence(content)
+        patched = candidate.disable_status_width_persistence(candidate.STATUS_WIDTH_CACHE_ANCHOR)
+        self.assertNotIn('getCacheStorageJsonItem', patched)
+        self.assertNotIn('setCacheStorageJsonItem', patched)
+
+    def test_immediate_backport_preserves_ordered_pending_frame_and_background_batching(self):
+        import subprocess
+        fixture = Path(__file__).parent / 'fixtures/pinned-render-barrier.js'
+        patched = candidate.immediate_renderer(fixture.read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'patched.js'
+            target.write_text(patched)
+            subprocess.run(['node', str(Path(__file__).parent / 'check-render-barrier.mjs'), str(target)], check=True)
+        self.assertIn('instance.factory.immediateCommands?.includes(fnName)', patched)
+        for content in ['', fixture.read_text() * 2]:
+            with self.assertRaisesRegex(RuntimeError, 'expected one pinned'):
+                candidate.immediate_renderer(content)
+
+    def test_line_decoration_probe_requires_the_known_provider_implementation(self):
+        import runpy
+        disable = runpy.run_path(str(Path(__file__).parents[1] / 'scripts/disable-line-decorations.py'))['disable_line_decorations']
+        source = "export const getEditorLineDecorations = async (editor: EditorState, rowIndex: number): Promise<readonly EditorLineDecoration[]> => {\n 'onEditorLineDecoration'\n}"
+        patched = disable(source)
+        self.assertIn('=> []', patched)
+        self.assertNotIn('ApplicationExtensionRpc', patched)
+        for content in ['', source * 2]:
+            with self.assertRaisesRegex(RuntimeError, 'expected one known'):
+                disable(content)
+
+    def test_css_dedup_requires_one_known_renderer_process_implementation(self):
+        for source in ['', candidate.CSS_DEDUP_ANCHOR * 2]:
+            with self.assertRaisesRegex(RuntimeError, 'expected one pinned CSS'):
+                candidate.css_dedup_renderer(source)
+        self.assertEqual(candidate.css_dedup_renderer(candidate.CSS_DEDUP_ANCHOR), candidate.CSS_DEDUP_REPLACEMENT)
+
+    def test_ai_root_probe_requires_two_known_selectors(self):
+        selector = b':root:has(.AiNativeLayout)'
+        for count in [0, 1, 3]:
+            with self.assertRaisesRegex(RuntimeError, 'expected two pinned'):
+                candidate.disable_ai_root_selectors(selector * count)
+        self.assertEqual(candidate.disable_ai_root_selectors(selector * 2), b':root.DiagnosticAiNativeLayout' * 2)
+
+    def test_pointer_renderer_rejects_unmatched_or_ambiguous_build_output(self):
+        for source in ['', candidate.POINTER_RENDER_ANCHOR * 2]:
+            with self.assertRaisesRegex(RuntimeError, 'expected one pinned'):
+                candidate.pointer_renderer(source)
+
     def test_only_bundled_editor_apps_are_built_during_install(self):
         self.assertEqual(BUILD_APPS, {'codemirror-electron', 'codemirror5-electron', 'ace-electron'})
         self.assertNotIn('basic-electron', BUILD_APPS)
@@ -164,6 +349,8 @@ class BenchmarkTest(unittest.TestCase):
         data = result(editor)
         report.validate_result(data, editor['id'])
         invalid = [dict(cutoffAcknowledged=False), dict(inputToCutoffSeconds=.1),
+                   dict(diagnosticCandidate='unreleased-worker'),
+                   dict(diagnosticResponse=True),
                    dict(instructions=101), dict(valid=False), dict(clipboardAfter='stale'),
                    dict(focusPid=999), dict(selection=None), dict(fixtureUnchanged=False),
                    dict(displayBackend='x11'), dict(inputDriver='xdotool'),
