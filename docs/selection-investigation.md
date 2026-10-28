@@ -1,6 +1,6 @@
 # Selection instruction investigation
 
-The performance target is **not met**. In the last measured full candidate,
+The performance target is **not met**. In the retained candidate measured before the gutter experiment,
 LVCE used a median **54,944,838** instructions versus CodeMirror 5's
 **24,589,256**, a **30,355,582** instruction gap (2.23 times the count).
 These are fresh-profile ARM measurements from
@@ -67,13 +67,17 @@ unchanged row nodes, and skip fully identical virtual subtrees. The subtree
 check examines the entire subtree: shared parent identity alone is insufficient.
 Rendering/minimap regressions and in-place token mutation remain covered.
 
-The latest plain-gutter candidate removes empty decoration filtering and unused
+The rejected plain-gutter experiment removed empty decoration filtering and unused
 breakpoint-label/decorated-node work for ordinary line numbers. A local warmed
 microbenchmark, 20,000 constructions of a 40-row gutter, improved from a median
 751.69 ms to 186.89 ms. One thousand differential cases matched the original
 output, including hidden numbers, active lines, breakpoints, lightbulbs,
-decorations and merge-conflict rows. **Its matched native measurement is pending;
-the local result is not a whole-editor performance claim.**
+decorations and merge-conflict rows. Its matched native median nevertheless rose
+from **49,604,107** to **53,965,282** instructions in
+[run 40633381302](https://github.com/levivilet/selections-instructions-benchmark/actions/runs/40633381302).
+Individual paired changes were +4.46M, -0.76M and +4.32M. The full candidate
+measured 52,929,948 versus CodeMirror 5's 23,831,783. The experiment was reverted;
+the local microbenchmark did not establish a whole-editor benefit.
 
 ## Rejected shortcuts and remaining validation
 
@@ -103,3 +107,20 @@ all producer and consumer CI gates, publish only required merged dependencies,
 and rerun the final comparison using an actual official LVCE Debian artifact.
 Do not declare the task complete while the fresh-profile median exceeds
 CodeMirror 5 or while release/integration acceptance is unfinished.
+
+The final diagnostic comparison uses an immutable copy of the worker bundled
+with the pinned release as its control. Both sides use that same official
+frontend; the control keeps all original worker/page bundles, while the
+candidate applies all retained identified producers. This compares the retained
+combination against the unmodified release rather than comparing two identical
+workers after the gutter revert. It still does not replace validation of a
+released LVCE artifact.
+
+Retained source work is preserved in
+[editor-worker#1680](https://github.com/lvce-editor/editor-worker/pull/1680),
+[virtual-dom#602](https://github.com/lvce-editor/virtual-dom/pull/602),
+[renderer-process#965](https://github.com/lvce-editor/renderer-process/pull/965),
+and [main-area-worker#865](https://github.com/lvce-editor/main-area-worker/pull/865).
+The consumer branch still requires the published combined editor API and
+matching producer dependencies before its full integration and Debian gates.
+These open changes must not be interpreted as merged or released fixes.
