@@ -186,6 +186,29 @@ def css_dedup_renderer(content):
     return content.replace(CSS_DEDUP_ANCHOR, CSS_DEDUP_REPLACEMENT)
 
 
+STATUS_WIDTH_CACHE_ANCHOR = """const getWidth = async text => {
+  try {
+    const item = await getCacheStorageJsonItem(getCacheKey(text), cacheName);
+    return item && isValidWidth(item.value) ? item.value : undefined;
+  } catch {
+    return undefined;
+  }
+};
+const setWidth = async (text, width) => {
+  try {
+    await setCacheStorageJsonItem(getCacheKey(text), width, cacheName);
+  } catch {
+    // Cache writes are best-effort; measurements remain usable without persistence.
+  }
+};"""
+
+
+def disable_status_width_persistence(content):
+    if content.count(STATUS_WIDTH_CACHE_ANCHOR) != 1:
+        raise RuntimeError('expected one pinned status width cache implementation')
+    return content.replace(STATUS_WIDTH_CACHE_ANCHOR, 'const getWidth = async text => undefined;\nconst setWidth = async (text, width) => {};')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--perf', required=True)
@@ -214,6 +237,7 @@ def main():
     observers.add_argument('--native-profile', action='store_true')
     observers.add_argument('--cpu-profile', action='store_true')
     parser.add_argument('--historical-artifact', action='store_true', help='use the separately pinned original frontend for historical worker controls')
+    parser.add_argument('--disable-status-width-persistence', action='store_true', help='diagnostic only: measure status labels without persistent width cache')
     args = parser.parse_args()
     if args.control_bundle and (not args.control_revision or args.response or args.allocation_profile or args.native_profile or args.cpu_profile):
         parser.error('paired counts require a control revision and no observer')
@@ -264,6 +288,15 @@ def main():
         if args.text_layer and b'.EditorRows' not in css_original:
             raise RuntimeError('packaged stylesheet is missing editor rows rules')
         css_candidate = disable_ai_root_selectors(css_original) if args.disable_ai_root_selectors else css_original + (TEXT_LAYER_CSS if args.text_layer else OVERLAY_CSS)
+    status_target = None
+    status_original = status_candidate = None
+    if args.disable_status_width_persistence:
+        status_workers = list(static_root.glob('*/packages/status-bar-worker/dist/statusBarWorkerMain.js'))
+        if len(status_workers) != 1:
+            raise RuntimeError(f'expected one installed status worker, got {status_workers}')
+        status_target = status_workers[0]
+        status_original = status_target.read_bytes()
+        status_candidate = disable_status_width_persistence(status_original.decode()).encode()
     plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render, args.editor_overlay or args.text_layer or args.disable_ai_root_selectors)]
     if args.control_bundle:
         plans.insert(0, (args.control_label, args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision, args.control_pointer_render or (args.pointer_render if args.label == 'without-status' else False), False))
@@ -279,6 +312,8 @@ def main():
                        'rendererProcessBundleSha256': hashlib.sha256(page_candidate if label == args.label or args.control_css_dedup else page_original).hexdigest() if page_original else None,
                        'immediateRender': args.immediate_render and label == args.label,
                        'editorStylesSha256': hashlib.sha256(css_candidate if editor_overlay else css_original).hexdigest() if css_original else None,
+                       'diagnosticStatusWidthPersistenceDisabled': args.disable_status_width_persistence and label == args.label,
+                       'statusWorkerBundleSha256': hashlib.sha256(status_candidate if label == args.label else status_original).hexdigest() if status_original else None,
                        'diagnosticStatusSuppressed': label == 'without-status',
                        'diagnosticLineDecorationsSuppressed': label == 'without-line-decorations',
                        'rendererPatchRevision': args.renderer_revision if pointer_render or args.immediate_render else None,
@@ -301,6 +336,8 @@ def main():
                 ordered = plans if repeat % 2 else list(reversed(plans))
                 for label, bundle, revision, _virtual_dom_revision, pointer_render, editor_overlay in ordered:
                     shutil.copyfile(bundle, target)
+                    if status_target:
+                        status_target.write_bytes(status_candidate if label == args.label else status_original)
                     if renderer_target:
                         renderer_target.write_bytes(renderer_candidate if label == args.label else renderer_pointer if pointer_render else renderer_original)
                     if page_target:
@@ -331,6 +368,8 @@ def main():
                         raise RuntimeError(f'invalid candidate trial: {result}')
         finally:
             shutil.copyfile(backup, target)
+            if status_target:
+                status_target.write_bytes(status_original)
             if renderer_target:
                 renderer_target.write_bytes(renderer_original)
             if page_target:

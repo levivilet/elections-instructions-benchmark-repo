@@ -51,7 +51,7 @@ def result(editor, counts=(100, 300, 200)):
 class BenchmarkTest(unittest.TestCase):
     def test_paired_candidates_alternate_and_restore_the_installed_bundle(self):
         cases = [(f, a, c, i, False, False, False, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True, False, False, False), (True, False, True, False, True, False, False, False), (False, False, True, False, False, True, False, False), (True, False, True, False, False, True, False, False), (False, False, True, False, False, False, True, False), (True, False, True, False, False, False, True, False), (False, False, True, False, False, False, True, True), (True, False, True, False, False, False, True, True)]
-        for historical, case in [(historical, case) for historical in [False, True] for case in cases]:
+        for historical, width_persistence, case in [(h, w, case) for h in [False, True] for w in [False, True] for case in cases]:
             fail, status_ablation, control_pointer, immediate, line_ablation, text_layer, css_dedup, ai_ablation = case
             with self.subTest(fail=fail, status_ablation=status_ablation, control_pointer=control_pointer), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -72,6 +72,10 @@ class BenchmarkTest(unittest.TestCase):
                 page = root / f'{app}/usr/lib/lvce/resources/app/static/test/packages/renderer-process/dist/rendererProcessMain.js'
                 page.parent.mkdir(parents=True)
                 page.write_text(candidate.CSS_DEDUP_ANCHOR)
+                status_worker = root / f'{app}/usr/lib/lvce/resources/app/static/test/packages/status-bar-worker/dist/statusBarWorkerMain.js'
+                status_worker.parent.mkdir(parents=True)
+                status_worker.write_text(candidate.STATUS_WIDTH_CACHE_ANCHOR)
+                status_observed = []
                 page_observed = []
                 immediate_observed = []
                 pointer_observed = []
@@ -90,6 +94,7 @@ class BenchmarkTest(unittest.TestCase):
                     if historical:
                         self.assertEqual(args[0]['version'], 'historical')
                         self.assertIn('lvce-historical', args[0]['binary'])
+                    status_observed.append(status_worker.read_text() != candidate.STATUS_WIDTH_CACHE_ANCHOR)
                     observed.append(installed.read_text())
                     ai_observed.append(':root.DiagnosticAiNativeLayout' in css.read_text())
                     page_observed.append(page.read_text() == candidate.CSS_DEDUP_REPLACEMENT)
@@ -104,6 +109,8 @@ class BenchmarkTest(unittest.TestCase):
                         '--label', label, '--control-bundle', str(control), '--control-revision', 'control-sha',
                         '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
                         '--pointer-render', '--renderer-revision', 'reviewed-renderer', '--editor-overlay']
+                if width_persistence:
+                    argv.append('--disable-status-width-persistence')
                 if historical:
                     argv.append('--historical-artifact')
                 if ai_ablation:
@@ -124,9 +131,11 @@ class BenchmarkTest(unittest.TestCase):
                 self.assertEqual(page.read_text(), candidate.CSS_DEDUP_ANCHOR)
                 self.assertEqual(installed.read_text(), 'original')
                 self.assertEqual(current.read_text(), 'current release unchanged')
+                self.assertEqual(status_worker.read_text(), candidate.STATUS_WIDTH_CACHE_ANCHOR)
                 self.assertEqual(renderer.read_text(), original_renderer)
                 self.assertEqual(css.read_text(), original_css)
                 if not fail:
+                    self.assertEqual(status_observed, [False, True, True, False, False, True] if width_persistence else [False] * 6)
                     self.assertEqual(page_observed, [True] * 6 if ai_ablation else [False, True, True, False, False, True] if css_dedup else [False] * 6)
                     self.assertEqual(ai_observed, [False, True, True, False, False, True] if ai_ablation else [False] * 6)
                     self.assertEqual(observed, ['control', 'candidate', 'candidate', 'control', 'control', 'candidate'])
@@ -136,6 +145,7 @@ class BenchmarkTest(unittest.TestCase):
                     for output_label, revision in [(label, 'candidate-sha'), ('paired-flat', 'control-sha')]:
                         output = json.loads((root / f'results/diagnostics/{output_label}.json').read_text())
                         self.assertEqual(output['workerRevision'], revision)
+                        self.assertEqual(output['diagnosticStatusWidthPersistenceDisabled'], width_persistence and output_label != 'paired-flat')
                         self.assertEqual(output['virtualDomRevision'], 'old-diff' if output_label == 'paired-flat' else 'new-diff')
                         self.assertEqual(output['pointerRender'], status_ablation or control_pointer or output_label != 'paired-flat')
                         self.assertEqual(output['immediateRender'], immediate and output_label != 'paired-flat')
@@ -147,6 +157,14 @@ class BenchmarkTest(unittest.TestCase):
                         self.assertEqual(output['diagnosticStatusSuppressed'], output_label == 'without-status')
                         self.assertEqual(len(output['trials']), 3)
                         self.assertEqual(len(output['sequence']), 6)
+
+    def test_status_width_cache_probe_requires_exact_known_implementation(self):
+        for content in ['', candidate.STATUS_WIDTH_CACHE_ANCHOR * 2]:
+            with self.assertRaisesRegex(RuntimeError, 'pinned status width cache'):
+                candidate.disable_status_width_persistence(content)
+        patched = candidate.disable_status_width_persistence(candidate.STATUS_WIDTH_CACHE_ANCHOR)
+        self.assertNotIn('getCacheStorageJsonItem', patched)
+        self.assertNotIn('setCacheStorageJsonItem', patched)
 
     def test_immediate_backport_preserves_ordered_pending_frame_and_background_batching(self):
         import subprocess
