@@ -1,14 +1,35 @@
 # Selection instruction investigation
 
-The performance target is **not met**. In the retained candidate measured before the gutter experiment,
-LVCE used a median **54,944,838** instructions versus CodeMirror 5's
-**24,589,256**, a **30,355,582** instruction gap (2.23 times the count).
-These are fresh-profile ARM measurements from
-[run 40630945918](https://github.com/levivilet/selections-instructions-benchmark/actions/runs/40630945918).
-The candidate substitutes identified source bundles into the pinned LVCE
-v0.126.12 artifact; it is not a released LVCE build and is excluded from the
-published editor comparison. Producer releases, consumer integration and final
-official Debian validation remain outstanding.
+Earlier in the investigation, the retained candidate used a median
+**54,944,838** instructions versus CodeMirror 5's **24,589,256** (2.23 times
+the count) in [run 40630945918](https://github.com/levivilet/selections-instructions-benchmark/actions/runs/40630945918).
+That candidate substituted identified source bundles into the pinned LVCE
+v0.126.12 artifact and was not a released LVCE build.
+
+## Final released-artifact validation
+
+The released performance target remains **not met**. The official ARM64 Debian
+artifact LVCE v0.126.14 used a median **52,341,148** instructions versus
+CodeMirror 5's **23,955,518**, a **28,385,630** instruction gap (2.18 times the
+count). The complete eight-editor report and all benchmark gates passed in
+[run 40688717414](https://github.com/levivilet/selections-instructions-benchmark/actions/runs/40688717414).
+The measured artifact was
+[`lvce-v0.126.14_arm64.deb`](https://github.com/lvce-editor/lvce-editor/releases/download/v0.126.14/lvce-v0.126.14_arm64.deb),
+SHA-256 `bb4feef2fddee941f4fa609eaa154ed4a083f7ccb9c9c2bc4c28493e8085a3d6`.
+
+Each editor used three fresh-profile native Wayland double-click trials with a
+one-second response window and per-CPU cgroup `perf stat` instruction counts.
+All LVCE and CodeMirror 5 trials selected `selectiontarget`; document and fixture
+SHA-256 was `c71260efceaabfa62611f7e1d3af4502dbd1290f7a1372fd4ea11fe1dcf27f36`,
+and the fixture remained unchanged. The three LVCE counts were 52,341,148,
+53,833,349 and 51,269,329. The CodeMirror 5 counts were 23,930,933, 24,101,331
+and 23,955,518. The one-second counter boundary and raw-counter accounting
+guards passed.
+
+The source improvements and required dependencies are integrated in the merged
+LVCE v0.126.14 release. This merge continuation completed the requested
+integration work; it did not restart the prior optimization investigation or
+close the remaining CodeMirror 5 performance gap.
 
 ## What the measurements establish
 
@@ -79,7 +100,7 @@ Individual paired changes were +4.46M, -0.76M and +4.32M. The full candidate
 measured 52,929,948 versus CodeMirror 5's 23,831,783. The experiment was reverted;
 the local microbenchmark did not establish a whole-editor benefit.
 
-## Rejected shortcuts and remaining validation
+## Rejected shortcuts and validation scope
 
 Diagnostic status suppression showed that status work is material, but removes
 a user-visible feature and is never a candidate for release. Disabling provider
@@ -101,26 +122,28 @@ Independent response observations require the correct `15 selected` status and
 selection DOM. Page-clock DOM mutations and animation-frame callbacks do not
 measure compositor presentation and do not establish a matched latency win.
 
-Continuation should inspect marker-only thread attribution together with the
-allocation call trees, then test one behavior-preserving change at a time. Keep
-all producer and consumer CI gates, publish only required merged dependencies,
-and rerun the final comparison using an actual official LVCE Debian artifact.
-Do not declare the task complete while the fresh-profile median exceeds
-CodeMirror 5 or while release/integration acceptance is unfinished.
+The earlier diagnosis proposed inspecting marker-only thread attribution with
+allocation call trees. The later instruction was to merge the measured
+improvements so far, not to restart that optimization work. Any further attempt
+to close the remaining performance gap needs a new discriminating experiment or
+an explicitly extended investigation budget.
 
-The final diagnostic comparison uses an immutable copy of the worker bundled
+The earlier diagnostic comparison uses an immutable copy of the worker bundled
 with the pinned release as its control. Both sides use that same official
 frontend; the control keeps all original worker/page bundles, while the
 candidate applies all retained identified producers. This compares the retained
 combination against the unmodified release rather than comparing two identical
-workers after the gutter revert. It still does not replace validation of a
-released LVCE artifact.
+workers after the gutter revert. The final released-artifact measurement above
+provides separate validation of the official Debian build.
 
-Retained source work is preserved in
+Retained source work was merged through
 [editor-worker#1680](https://github.com/lvce-editor/editor-worker/pull/1680),
 [virtual-dom#602](https://github.com/lvce-editor/virtual-dom/pull/602),
 [renderer-process#965](https://github.com/lvce-editor/renderer-process/pull/965),
 and [main-area-worker#865](https://github.com/lvce-editor/main-area-worker/pull/865).
-The consumer branch still requires the published combined editor API and
-matching producer dependencies before its full integration and Debian gates.
-These open changes must not be interpreted as merged or released fixes.
+The consumer integration [lvce-editor#16346](https://github.com/lvce-editor/lvce-editor/pull/16346)
+is merged and published as v0.126.14. Its released dependencies include
+virtual-dom 11.25.2, editor-worker 19.78.7, renderer-process 30.81.2,
+main-area-worker 9.77.5, and status-bar-worker 3.35.3. Official Debian artifact,
+selection behavior, and required source/consumer CI gates passed. The performance
+target remains outstanding as measured above.
