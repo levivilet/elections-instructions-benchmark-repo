@@ -19,6 +19,13 @@ OVERLAY_CSS = b'\n.Selections { position: absolute; inset: 0; pointer-events: no
 TEXT_LAYER_CSS = b'\n.EditorRows { will-change: transform; }\n'
 
 
+def disable_ai_root_selectors(styles):
+    selector = b':root:has(.AiNativeLayout)'
+    if styles.count(selector) != 2:
+        raise RuntimeError('expected two pinned AI layout root selectors')
+    return styles.replace(selector, b':root.DiagnosticAiNativeLayout')
+
+
 class CandidateCapture(Capture):
     def finish(self):
         result = super().finish()
@@ -190,8 +197,10 @@ def main():
     styles = parser.add_mutually_exclusive_group()
     styles.add_argument('--editor-overlay', action='store_true')
     styles.add_argument('--text-layer', action='store_true')
+    styles.add_argument('--disable-ai-root-selectors', action='store_true')
     parser.add_argument('--immediate-render', action='store_true')
     parser.add_argument('--css-dedup', action='store_true')
+    parser.add_argument('--control-css-dedup', action='store_true')
     parser.add_argument('--renderer-process-revision')
     parser.add_argument('--renderer-revision')
     parser.add_argument('--control-bundle', type=Path)
@@ -237,7 +246,7 @@ def main():
         page_candidate = css_dedup_renderer(page_original.decode()).encode()
     css_target = None
     css_original = css_candidate = None
-    if args.editor_overlay or args.text_layer:
+    if args.editor_overlay or args.text_layer or args.disable_ai_root_selectors:
         styles = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/css/App.css'))
         if len(styles) != 1:
             raise RuntimeError(f'expected one installed editor stylesheet, got {styles}')
@@ -247,8 +256,8 @@ def main():
             raise RuntimeError('packaged stylesheet is missing editor layer rules')
         if args.text_layer and b'.EditorRows' not in css_original:
             raise RuntimeError('packaged stylesheet is missing editor rows rules')
-        css_candidate = css_original + (TEXT_LAYER_CSS if args.text_layer else OVERLAY_CSS)
-    plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render, args.editor_overlay or args.text_layer)]
+        css_candidate = disable_ai_root_selectors(css_original) if args.disable_ai_root_selectors else css_original + (TEXT_LAYER_CSS if args.text_layer else OVERLAY_CSS)
+    plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render, args.editor_overlay or args.text_layer or args.disable_ai_root_selectors)]
     if args.control_bundle:
         plans.insert(0, (args.control_label, args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision, args.control_pointer_render or (args.pointer_render if args.label == 'without-status' else False), False))
     sequence = []
@@ -257,9 +266,10 @@ def main():
                        'pointerRender': pointer_render,
                        'editorOverlay': editor_overlay and args.editor_overlay,
                        'textLayer': editor_overlay and args.text_layer,
-                       'cssDedup': args.css_dedup and label == args.label,
+                       'cssDedup': args.css_dedup and (label == args.label or args.control_css_dedup),
+                       'diagnosticAiRootSelectorsDisabled': args.disable_ai_root_selectors and editor_overlay,
                        'rendererProcessPatchRevision': args.renderer_process_revision if args.css_dedup else None,
-                       'rendererProcessBundleSha256': hashlib.sha256(page_candidate if label == args.label else page_original).hexdigest() if page_original else None,
+                       'rendererProcessBundleSha256': hashlib.sha256(page_candidate if label == args.label or args.control_css_dedup else page_original).hexdigest() if page_original else None,
                        'immediateRender': args.immediate_render and label == args.label,
                        'editorStylesSha256': hashlib.sha256(css_candidate if editor_overlay else css_original).hexdigest() if css_original else None,
                        'diagnosticStatusSuppressed': label == 'without-status',
@@ -287,7 +297,7 @@ def main():
                     if renderer_target:
                         renderer_target.write_bytes(renderer_candidate if label == args.label else renderer_pointer if pointer_render else renderer_original)
                     if page_target:
-                        page_target.write_bytes(page_candidate if label == args.label else page_original)
+                        page_target.write_bytes(page_candidate if label == args.label or args.control_css_dedup else page_original)
                     if css_target:
                         css_target.write_bytes(css_candidate if editor_overlay else css_original)
                     options = {'capture_type': CandidateCapture}

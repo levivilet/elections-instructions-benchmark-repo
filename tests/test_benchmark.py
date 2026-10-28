@@ -50,7 +50,7 @@ def result(editor, counts=(100, 300, 200)):
 
 class BenchmarkTest(unittest.TestCase):
     def test_paired_candidates_alternate_and_restore_the_installed_bundle(self):
-        for fail, status_ablation, control_pointer, immediate, line_ablation, text_layer, css_dedup in [(f, a, c, i, False, False, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True, False, False), (True, False, True, False, True, False, False), (False, False, True, False, False, True, False), (True, False, True, False, False, True, False), (False, False, True, False, False, False, True), (True, False, True, False, False, False, True)]:
+        for fail, status_ablation, control_pointer, immediate, line_ablation, text_layer, css_dedup, ai_ablation in [(f, a, c, i, False, False, False, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True, False, False, False), (True, False, True, False, True, False, False, False), (False, False, True, False, False, True, False, False), (True, False, True, False, False, True, False, False), (False, False, True, False, False, False, True, False), (True, False, True, False, False, False, True, False), (False, False, True, False, False, False, True, True), (True, False, True, False, False, False, True, True)]:
             with self.subTest(fail=fail, status_ablation=status_ablation, control_pointer=control_pointer), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / 'config').mkdir()
@@ -70,7 +70,9 @@ class BenchmarkTest(unittest.TestCase):
                 pointer_observed = []
                 css = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/css/App.css'
                 css.parent.mkdir(parents=True)
-                css.write_text('.EditorLayers {} .EditorSelection {} .EditorRows {}')
+                original_css = '.EditorLayers {} .EditorSelection {} .EditorRows {} :root:has(.AiNativeLayout) {} :root:has(.AiNativeLayout) .QuickPick {}'
+                css.write_text(original_css)
+                ai_observed = []
                 css_observed = []
                 bundle = root / 'candidate.js'
                 bundle.write_text('candidate')
@@ -79,6 +81,7 @@ class BenchmarkTest(unittest.TestCase):
                 observed = []
                 def measure(*args, **kwargs):
                     observed.append(installed.read_text())
+                    ai_observed.append(':root.DiagnosticAiNativeLayout' in css.read_text())
                     page_observed.append(page.read_text() == candidate.CSS_DEDUP_REPLACEMENT)
                     immediate_observed.append('if (frame.immediate || isTest())' in renderer.read_text())
                     css_observed.append(css.read_text().endswith((candidate.TEXT_LAYER_CSS if text_layer else candidate.OVERLAY_CSS).decode()))
@@ -91,6 +94,8 @@ class BenchmarkTest(unittest.TestCase):
                         '--label', label, '--control-bundle', str(control), '--control-revision', 'control-sha',
                         '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
                         '--pointer-render', '--renderer-revision', 'reviewed-renderer', '--editor-overlay']
+                if ai_ablation:
+                    argv += ['--disable-ai-root-selectors', '--control-css-dedup']
                 if css_dedup:
                     argv.remove('--editor-overlay')
                     argv += ['--css-dedup', '--renderer-process-revision', 'reviewed-page-revision']
@@ -107,9 +112,10 @@ class BenchmarkTest(unittest.TestCase):
                 self.assertEqual(page.read_text(), candidate.CSS_DEDUP_ANCHOR)
                 self.assertEqual(installed.read_text(), 'original')
                 self.assertEqual(renderer.read_text(), original_renderer)
-                self.assertEqual(css.read_text(), '.EditorLayers {} .EditorSelection {} .EditorRows {}')
+                self.assertEqual(css.read_text(), original_css)
                 if not fail:
-                    self.assertEqual(page_observed, [False, True, True, False, False, True] if css_dedup else [False] * 6)
+                    self.assertEqual(page_observed, [True] * 6 if ai_ablation else [False, True, True, False, False, True] if css_dedup else [False] * 6)
+                    self.assertEqual(ai_observed, [False, True, True, False, False, True] if ai_ablation else [False] * 6)
                     self.assertEqual(observed, ['control', 'candidate', 'candidate', 'control', 'control', 'candidate'])
                     self.assertEqual(immediate_observed, [False, True, True, False, False, True] if immediate else [False] * 6)
                     self.assertEqual(css_observed, [False] * 6 if css_dedup else [False, True, True, False, False, True])
@@ -121,7 +127,8 @@ class BenchmarkTest(unittest.TestCase):
                         self.assertEqual(output['pointerRender'], status_ablation or control_pointer or output_label != 'paired-flat')
                         self.assertEqual(output['immediateRender'], immediate and output_label != 'paired-flat')
                         self.assertEqual(output['editorOverlay'], not text_layer and not css_dedup and output_label != 'paired-flat')
-                        self.assertEqual(output['cssDedup'], css_dedup and output_label != 'paired-flat')
+                        self.assertEqual(output['cssDedup'], css_dedup and (output_label != 'paired-flat' or ai_ablation))
+                        self.assertEqual(output['diagnosticAiRootSelectorsDisabled'], ai_ablation and output_label != 'paired-flat')
                         self.assertEqual(output['textLayer'], text_layer and output_label != 'paired-flat')
                         self.assertEqual(output['diagnosticLineDecorationsSuppressed'], line_ablation and output_label != 'paired-flat')
                         self.assertEqual(output['diagnosticStatusSuppressed'], output_label == 'without-status')
@@ -157,6 +164,13 @@ class BenchmarkTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'expected one pinned CSS'):
                 candidate.css_dedup_renderer(source)
         self.assertEqual(candidate.css_dedup_renderer(candidate.CSS_DEDUP_ANCHOR), candidate.CSS_DEDUP_REPLACEMENT)
+
+    def test_ai_root_probe_requires_two_known_selectors(self):
+        selector = b':root:has(.AiNativeLayout)'
+        for count in [0, 1, 3]:
+            with self.assertRaisesRegex(RuntimeError, 'expected two pinned'):
+                candidate.disable_ai_root_selectors(selector * count)
+        self.assertEqual(candidate.disable_ai_root_selectors(selector * 2), b':root.DiagnosticAiNativeLayout' * 2)
 
     def test_pointer_renderer_rejects_unmatched_or_ambiguous_build_output(self):
         for source in ['', candidate.POINTER_RENDER_ANCHOR * 2]:

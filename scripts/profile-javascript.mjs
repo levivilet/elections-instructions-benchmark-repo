@@ -82,5 +82,7 @@ if (!allocations) {
   await Promise.race([traceComplete, new Promise((_, reject) => setTimeout(() => reject(new Error('Browser trace did not finish')), 15000).unref())])
   await writeFile(`${directory}/browser-trace.json`, JSON.stringify({ traceEvents }))
 }
+const context = await send('Runtime.evaluate', { expression: `JSON.stringify({ aiNativeLayout: !!document.querySelector('.AiNativeLayout'), rootClass: document.documentElement.className, layoutRoots: [...document.querySelectorAll('.Workbench')].slice(0,20).map(root => { const ancestors=[]; for(let node=root;node;node=node.parentElement) ancestors.push({name:node.tagName,id:node.id,className:node.className}); return ancestors; }) })`, returnByValue: true })
+await writeFile(`${directory}/layout-context.json`, context.result.value)
 await writeFile(`${directory}/targets.json`, JSON.stringify(sessions, null, 2))
 socket.close()
