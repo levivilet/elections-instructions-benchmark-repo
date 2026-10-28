@@ -51,7 +51,7 @@ def result(editor, counts=(100, 300, 200)):
 class BenchmarkTest(unittest.TestCase):
     def test_paired_candidates_alternate_and_restore_the_installed_bundle(self):
         cases = [(f, a, c, i, False, False, False, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True, False, False, False), (True, False, True, False, True, False, False, False), (False, False, True, False, False, True, False, False), (True, False, True, False, False, True, False, False), (False, False, True, False, False, False, True, False), (True, False, True, False, False, False, True, False), (False, False, True, False, False, False, True, True), (True, False, True, False, False, False, True, True)]
-        for historical, width_persistence, case in [(h, w, case) for h in [False, True] for w in [False, True] for case in cases]:
+        for historical, width_persistence, case in [(h, w, case) for h in [False, True] for w in [False, True, "released"] for case in cases]:
             fail, status_ablation, control_pointer, immediate, line_ablation, text_layer, css_dedup, ai_ablation = case
             with self.subTest(fail=fail, status_ablation=status_ablation, control_pointer=control_pointer), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -109,7 +109,11 @@ class BenchmarkTest(unittest.TestCase):
                         '--label', label, '--control-bundle', str(control), '--control-revision', 'control-sha',
                         '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
                         '--pointer-render', '--renderer-revision', 'reviewed-renderer', '--editor-overlay']
-                if width_persistence:
+                if width_persistence == 'released':
+                    released_status = root / 'released-status.js'
+                    released_status.write_text('released status source')
+                    argv += ['--status-worker-bundle', str(released_status), '--status-worker-version', '3.35.3']
+                elif width_persistence:
                     argv.append('--disable-status-width-persistence')
                 if historical:
                     argv.append('--historical-artifact')
@@ -145,7 +149,8 @@ class BenchmarkTest(unittest.TestCase):
                     for output_label, revision in [(label, 'candidate-sha'), ('paired-flat', 'control-sha')]:
                         output = json.loads((root / f'results/diagnostics/{output_label}.json').read_text())
                         self.assertEqual(output['workerRevision'], revision)
-                        self.assertEqual(output['diagnosticStatusWidthPersistenceDisabled'], width_persistence and output_label != 'paired-flat')
+                        self.assertEqual(output['statusWorkerVersion'], '3.35.3' if width_persistence == 'released' and output_label != 'paired-flat' else None)
+                        self.assertEqual(output['diagnosticStatusWidthPersistenceDisabled'], width_persistence is True and output_label != 'paired-flat')
                         self.assertEqual(output['virtualDomRevision'], 'old-diff' if output_label == 'paired-flat' else 'new-diff')
                         self.assertEqual(output['pointerRender'], status_ablation or control_pointer or output_label != 'paired-flat')
                         self.assertEqual(output['immediateRender'], immediate and output_label != 'paired-flat')

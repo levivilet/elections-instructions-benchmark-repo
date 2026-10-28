@@ -58,6 +58,20 @@ jobs:
           bash scripts/install-input.sh
       - name: Install pinned ARM artifact
         run: python3 scripts/install.py --editors "${{ matrix.editor }}"
+      - name: Verify released status worker candidate
+        if: matrix.editor == 'lvce'
+        run: |
+          mkdir -p .tmp/released-status-worker
+          npm pack --ignore-scripts @lvce-editor/status-bar-worker@3.35.3 --pack-destination .tmp/released-status-worker
+          python3 - <<'PYTHON'
+          import base64, hashlib
+          from pathlib import Path
+          archive = Path('.tmp/released-status-worker/lvce-editor-status-bar-worker-3.35.3.tgz')
+          expected = 'HLeh6VhauZmxS3VhrCiwXVaCR/AE09PBFI3obcCayPEbgyZSH3rCyYzHAhCZyslxPXzTF+IiBLQgi+pSSlqHmg=='
+          assert base64.b64encode(hashlib.sha512(archive.read_bytes()).digest()).decode() == expected
+          PYTHON
+          tar -xzf .tmp/released-status-worker/lvce-editor-status-bar-worker-3.35.3.tgz -C .tmp/released-status-worker
+          node -e "if (require('./.tmp/released-status-worker/package/package.json').version !== '3.35.3') process.exit(1)"
       - name: Install original diagnostic frontend separately
         if: matrix.editor == 'lvce'
         run: python3 scripts/install.py --historical-lvce

@@ -237,8 +237,12 @@ def main():
     observers.add_argument('--native-profile', action='store_true')
     observers.add_argument('--cpu-profile', action='store_true')
     parser.add_argument('--historical-artifact', action='store_true', help='use the separately pinned original frontend for historical worker controls')
+    parser.add_argument('--status-worker-bundle', type=Path)
+    parser.add_argument('--status-worker-version')
     parser.add_argument('--disable-status-width-persistence', action='store_true', help='diagnostic only: measure status labels without persistent width cache')
     args = parser.parse_args()
+    if args.status_worker_bundle and (not args.status_worker_version or args.disable_status_width_persistence):
+        parser.error('released status bundle requires version and cannot combine with cache ablation')
     if args.control_bundle and (not args.control_revision or args.response or args.allocation_profile or args.native_profile or args.cpu_profile):
         parser.error('paired counts require a control revision and no observer')
     if (args.pointer_render or args.immediate_render) and not args.renderer_revision:
@@ -290,13 +294,13 @@ def main():
         css_candidate = disable_ai_root_selectors(css_original) if args.disable_ai_root_selectors else css_original + (TEXT_LAYER_CSS if args.text_layer else OVERLAY_CSS)
     status_target = None
     status_original = status_candidate = None
-    if args.disable_status_width_persistence:
+    if args.disable_status_width_persistence or args.status_worker_bundle:
         status_workers = list(static_root.glob('*/packages/status-bar-worker/dist/statusBarWorkerMain.js'))
         if len(status_workers) != 1:
             raise RuntimeError(f'expected one installed status worker, got {status_workers}')
         status_target = status_workers[0]
         status_original = status_target.read_bytes()
-        status_candidate = disable_status_width_persistence(status_original.decode()).encode()
+        status_candidate = args.status_worker_bundle.read_bytes() if args.status_worker_bundle else disable_status_width_persistence(status_original.decode()).encode()
     plans = [(args.label, args.bundle, args.revision, args.virtual_dom_revision, args.pointer_render, args.editor_overlay or args.text_layer or args.disable_ai_root_selectors)]
     if args.control_bundle:
         plans.insert(0, (args.control_label, args.control_bundle, args.control_revision, args.control_virtual_dom_revision or args.virtual_dom_revision, args.control_pointer_render or (args.pointer_render if args.label == 'without-status' else False), False))
@@ -313,6 +317,7 @@ def main():
                        'immediateRender': args.immediate_render and label == args.label,
                        'editorStylesSha256': hashlib.sha256(css_candidate if editor_overlay else css_original).hexdigest() if css_original else None,
                        'diagnosticStatusWidthPersistenceDisabled': args.disable_status_width_persistence and label == args.label,
+                       'statusWorkerVersion': args.status_worker_version if args.status_worker_bundle and label == args.label else None,
                        'statusWorkerBundleSha256': hashlib.sha256(status_candidate if label == args.label else status_original).hexdigest() if status_original else None,
                        'diagnosticStatusSuppressed': label == 'without-status',
                        'diagnosticLineDecorationsSuppressed': label == 'without-line-decorations',
