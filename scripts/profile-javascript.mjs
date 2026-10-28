@@ -41,6 +41,8 @@ const start = async (sessionId) => {
     await send('Profiler.enable', {}, sessionId)
     await send('Profiler.setSamplingInterval', { interval: 100 }, sessionId)
     await send('Profiler.start', {}, sessionId)
+    // Before the native counter starts, identify this target's OS trace thread.
+    await send('Runtime.evaluate', { expression: `performance.mark('selection-profile-target:' + globalThis.location.href)` }, sessionId)
   }
 }
 socket.addEventListener('message', ({ data }) => {
@@ -63,7 +65,7 @@ socket.addEventListener('message', ({ data }) => {
   }
 })
 if (!allocations) {
-  await send('Tracing.start', { categories: 'devtools.timeline,cc,viz,disabled-by-default-devtools.timeline.invalidationTracking', transferMode: 'ReportEvents' })
+  await send('Tracing.start', { categories: 'devtools.timeline,cc,viz,blink.user_timing,disabled-by-default-devtools.timeline.invalidationTracking', transferMode: 'ReportEvents' })
 }
 await start()
 await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true })
@@ -81,6 +83,9 @@ if (!allocations) {
   await send('Tracing.end')
   await Promise.race([traceComplete, new Promise((_, reject) => setTimeout(() => reject(new Error('Browser trace did not finish')), 15000).unref())])
   await writeFile(`${directory}/browser-trace.json`, JSON.stringify({ traceEvents }))
+  const prefix = 'selection-profile-target:'
+  const markers = traceEvents.filter(event => event.name.startsWith(prefix)).map(event => ({ pid: event.pid, tid: event.tid, url: event.name.slice(prefix.length) }))
+  await writeFile(`${directory}/target-threads.json`, JSON.stringify(markers, null, 2))
 }
 const context = await send('Runtime.evaluate', { expression: `JSON.stringify({ aiNativeLayout: !!document.querySelector('.AiNativeLayout'), rootClass: document.documentElement.className, layoutRoots: [...document.querySelectorAll('.Workbench')].slice(0,20).map(root => { const ancestors=[]; for(let node=root;node;node=node.parentElement) ancestors.push({name:node.tagName,id:node.id,className:node.className}); return ancestors; }) })`, returnByValue: true })
 await writeFile(`${directory}/layout-context.json`, context.result.value)
