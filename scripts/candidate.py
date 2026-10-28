@@ -129,6 +129,56 @@ def immediate_renderer(content):
     replace_once(old, new)
     return content
 
+CSS_DEDUP_ANCHOR = """const addCssStyleSheet = (id, text) => {
+  const existing = get$5(id);
+  if (existing) {
+    existing.replaceSync(text);
+    setText$1(id, text);
+    if (id === 'ContributedColorTheme') {
+      window.dispatchEvent(new Event('color-theme-changed'));
+    }
+    return;
+  }
+  const sheet = new CSSStyleSheet({});
+  set$6(id, sheet);
+  setText$1(id, text);
+  sheet.replaceSync(text);
+  document.adoptedStyleSheets.push(sheet);
+  if (id === 'ContributedColorTheme') {
+    window.dispatchEvent(new Event('color-theme-changed'));
+  }
+};
+"""
+CSS_DEDUP_REPLACEMENT = """const addCssStyleSheet = (id, text) => {
+  const existing = get$5(id);
+  if (existing) {
+    if (typeof text !== 'string' || getText(id) !== text) {
+      existing.replaceSync(text);
+      setText$1(id, text);
+    }
+    if (id === 'ContributedColorTheme') {
+      window.dispatchEvent(new Event('color-theme-changed'));
+    }
+    return;
+  }
+  const sheet = new CSSStyleSheet({});
+  sheet.replaceSync(text);
+  document.adoptedStyleSheets.push(sheet);
+  set$6(id, sheet);
+  setText$1(id, text);
+  if (id === 'ContributedColorTheme') {
+    window.dispatchEvent(new Event('color-theme-changed'));
+  }
+};
+"""
+
+
+def css_dedup_renderer(content):
+    if content.count(CSS_DEDUP_ANCHOR) != 1:
+        raise RuntimeError('expected one pinned CSS stylesheet implementation')
+    return content.replace(CSS_DEDUP_ANCHOR, CSS_DEDUP_REPLACEMENT)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--perf', required=True)
@@ -141,6 +191,8 @@ def main():
     styles.add_argument('--editor-overlay', action='store_true')
     styles.add_argument('--text-layer', action='store_true')
     parser.add_argument('--immediate-render', action='store_true')
+    parser.add_argument('--css-dedup', action='store_true')
+    parser.add_argument('--renderer-process-revision')
     parser.add_argument('--renderer-revision')
     parser.add_argument('--control-bundle', type=Path)
     parser.add_argument('--control-label', default='paired-flat')
@@ -157,6 +209,8 @@ def main():
         parser.error('paired counts require a control revision and no observer')
     if (args.pointer_render or args.immediate_render) and not args.renderer_revision:
         parser.error('pointer renderer requires its reviewed source revision')
+    if args.css_dedup and not args.renderer_process_revision:
+        parser.error('CSS dedup requires its reviewed source revision')
     editor = next(e for e in json.loads((ROOT / 'config/editors.lock.json').read_text()) if e['id'] == 'lvce')
     targets = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/packages/editor-worker/dist/editorWorkerMain.js'))
     if len(targets) != 1:
@@ -172,6 +226,15 @@ def main():
         renderer_original = renderer_target.read_bytes()
         renderer_pointer = pointer_renderer(renderer_original.decode()).encode() if args.pointer_render else renderer_original
         renderer_candidate = immediate_renderer(renderer_pointer.decode()).encode() if args.immediate_render else renderer_pointer
+    page_target = None
+    page_original = page_candidate = None
+    if args.css_dedup:
+        pages = list((ROOT / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static').glob('*/packages/renderer-process/dist/rendererProcessMain.js'))
+        if len(pages) != 1:
+            raise RuntimeError(f'expected one installed renderer process bundle, got {pages}')
+        page_target = pages[0]
+        page_original = page_target.read_bytes()
+        page_candidate = css_dedup_renderer(page_original.decode()).encode()
     css_target = None
     css_original = css_candidate = None
     if args.editor_overlay or args.text_layer:
@@ -194,6 +257,9 @@ def main():
                        'pointerRender': pointer_render,
                        'editorOverlay': editor_overlay and args.editor_overlay,
                        'textLayer': editor_overlay and args.text_layer,
+                       'cssDedup': args.css_dedup and label == args.label,
+                       'rendererProcessPatchRevision': args.renderer_process_revision if args.css_dedup else None,
+                       'rendererProcessBundleSha256': hashlib.sha256(page_candidate if label == args.label else page_original).hexdigest() if page_original else None,
                        'immediateRender': args.immediate_render and label == args.label,
                        'editorStylesSha256': hashlib.sha256(css_candidate if editor_overlay else css_original).hexdigest() if css_original else None,
                        'diagnosticStatusSuppressed': label == 'without-status',
@@ -220,6 +286,8 @@ def main():
                     shutil.copyfile(bundle, target)
                     if renderer_target:
                         renderer_target.write_bytes(renderer_candidate if label == args.label else renderer_pointer if pointer_render else renderer_original)
+                    if page_target:
+                        page_target.write_bytes(page_candidate if label == args.label else page_original)
                     if css_target:
                         css_target.write_bytes(css_candidate if editor_overlay else css_original)
                     options = {'capture_type': CandidateCapture}
@@ -248,6 +316,8 @@ def main():
             shutil.copyfile(backup, target)
             if renderer_target:
                 renderer_target.write_bytes(renderer_original)
+            if page_target:
+                page_target.write_bytes(page_original)
             if css_target:
                 css_target.write_bytes(css_original)
 

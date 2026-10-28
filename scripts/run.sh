@@ -111,21 +111,21 @@ if [ "${1:-}" != --validate-input ]; then
       python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_ROW_BUNDLE" --revision "$BENCHMARK_ROW_REVISION" --virtual-dom-revision "$BENCHMARK_VIRTUAL_DOM_REVISION" --label row
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --text-layer --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION"
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION"
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --text-layer --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --label paired-candidate --control-bundle "$BENCHMARK_MONOSPACE_CONTROL_BUNDLE" --control-revision "$BENCHMARK_CANDIDATE_REVISION" --control-pointer-render
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --label paired-candidate --control-bundle "$BENCHMARK_MONOSPACE_CONTROL_BUNDLE" --control-revision "$BENCHMARK_CANDIDATE_REVISION" --control-pointer-render
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --text-layer --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --label response --response
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --label response --response
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --text-layer --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --label allocations --allocation-profile
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --label allocations --allocation-profile
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --text-layer --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --label native --native-profile
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --label native --native-profile
     sudo --preserve-env=PATH,XDG_RUNTIME_DIR,WAYLAND_DISPLAY,SWAYSOCK,YDOTOOL_SOCKET \
       env XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --text-layer --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --label cpu --cpu-profile
+      python3 scripts/candidate.py --perf "$2" --bundle "$BENCHMARK_CANDIDATE_BUNDLE" --css-dedup --renderer-process-revision "$BENCHMARK_RENDERER_PROCESS_REVISION" --pointer-render --renderer-revision "$BENCHMARK_RENDERER_REVISION" --revision "$BENCHMARK_CANDIDATE_REVISION" --virtual-dom-revision "$BENCHMARK_CANDIDATE_VIRTUAL_DOM_REVISION" --label cpu --cpu-profile
   fi
 fi

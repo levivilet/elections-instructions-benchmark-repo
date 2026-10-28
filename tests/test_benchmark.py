@@ -50,7 +50,7 @@ def result(editor, counts=(100, 300, 200)):
 
 class BenchmarkTest(unittest.TestCase):
     def test_paired_candidates_alternate_and_restore_the_installed_bundle(self):
-        for fail, status_ablation, control_pointer, immediate, line_ablation, text_layer in [(f, a, c, i, False, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True, False), (True, False, True, False, True, False), (False, False, True, False, False, True), (True, False, True, False, False, True)]:
+        for fail, status_ablation, control_pointer, immediate, line_ablation, text_layer, css_dedup in [(f, a, c, i, False, False, False) for f, a, c in [(False, False, False), (True, False, False), (False, True, False), (True, True, False), (False, False, True), (True, False, True)] for i in [False, True]] + [(False, False, True, False, True, False, False), (True, False, True, False, True, False, False), (False, False, True, False, False, True, False), (True, False, True, False, False, True, False), (False, False, True, False, False, False, True), (True, False, True, False, False, False, True)]:
             with self.subTest(fail=fail, status_ablation=status_ablation, control_pointer=control_pointer), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / 'config').mkdir()
@@ -62,6 +62,10 @@ class BenchmarkTest(unittest.TestCase):
                 renderer.parent.mkdir(parents=True)
                 original_renderer = candidate.POINTER_RENDER_ANCHOR + (Path(__file__).parent / 'fixtures/pinned-render-barrier.js').read_text()
                 renderer.write_text(original_renderer)
+                page = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/packages/renderer-process/dist/rendererProcessMain.js'
+                page.parent.mkdir(parents=True)
+                page.write_text(candidate.CSS_DEDUP_ANCHOR)
+                page_observed = []
                 immediate_observed = []
                 pointer_observed = []
                 css = root / '.tmp/apps/lvce/usr/lib/lvce/resources/app/static/test/css/App.css'
@@ -75,6 +79,7 @@ class BenchmarkTest(unittest.TestCase):
                 observed = []
                 def measure(*args, **kwargs):
                     observed.append(installed.read_text())
+                    page_observed.append(page.read_text() == candidate.CSS_DEDUP_REPLACEMENT)
                     immediate_observed.append('if (frame.immediate || isTest())' in renderer.read_text())
                     css_observed.append(css.read_text().endswith((candidate.TEXT_LAYER_CSS if text_layer else candidate.OVERLAY_CSS).decode()))
                     pointer_observed.append('Editor.handleMouseDownAndRender' in renderer.read_text())
@@ -86,6 +91,9 @@ class BenchmarkTest(unittest.TestCase):
                         '--label', label, '--control-bundle', str(control), '--control-revision', 'control-sha',
                         '--virtual-dom-revision', 'new-diff', '--control-virtual-dom-revision', 'old-diff',
                         '--pointer-render', '--renderer-revision', 'reviewed-renderer', '--editor-overlay']
+                if css_dedup:
+                    argv.remove('--editor-overlay')
+                    argv += ['--css-dedup', '--renderer-process-revision', 'reviewed-page-revision']
                 if text_layer:
                     argv[argv.index('--editor-overlay')] = '--text-layer'
                 if immediate:
@@ -96,13 +104,15 @@ class BenchmarkTest(unittest.TestCase):
                         patch.object(candidate, 'trial', side_effect=measure), patch.object(sys, 'argv', argv):
                     with self.assertRaises(RuntimeError) if fail else contextlib.nullcontext():
                         candidate.main()
+                self.assertEqual(page.read_text(), candidate.CSS_DEDUP_ANCHOR)
                 self.assertEqual(installed.read_text(), 'original')
                 self.assertEqual(renderer.read_text(), original_renderer)
                 self.assertEqual(css.read_text(), '.EditorLayers {} .EditorSelection {} .EditorRows {}')
                 if not fail:
+                    self.assertEqual(page_observed, [False, True, True, False, False, True] if css_dedup else [False] * 6)
                     self.assertEqual(observed, ['control', 'candidate', 'candidate', 'control', 'control', 'candidate'])
                     self.assertEqual(immediate_observed, [False, True, True, False, False, True] if immediate else [False] * 6)
-                    self.assertEqual(css_observed, [False, True, True, False, False, True])
+                    self.assertEqual(css_observed, [False] * 6 if css_dedup else [False, True, True, False, False, True])
                     self.assertEqual(pointer_observed, [True] * 6 if status_ablation or control_pointer else [False, True, True, False, False, True])
                     for output_label, revision in [(label, 'candidate-sha'), ('paired-flat', 'control-sha')]:
                         output = json.loads((root / f'results/diagnostics/{output_label}.json').read_text())
@@ -110,7 +120,8 @@ class BenchmarkTest(unittest.TestCase):
                         self.assertEqual(output['virtualDomRevision'], 'old-diff' if output_label == 'paired-flat' else 'new-diff')
                         self.assertEqual(output['pointerRender'], status_ablation or control_pointer or output_label != 'paired-flat')
                         self.assertEqual(output['immediateRender'], immediate and output_label != 'paired-flat')
-                        self.assertEqual(output['editorOverlay'], not text_layer and output_label != 'paired-flat')
+                        self.assertEqual(output['editorOverlay'], not text_layer and not css_dedup and output_label != 'paired-flat')
+                        self.assertEqual(output['cssDedup'], css_dedup and output_label != 'paired-flat')
                         self.assertEqual(output['textLayer'], text_layer and output_label != 'paired-flat')
                         self.assertEqual(output['diagnosticLineDecorationsSuppressed'], line_ablation and output_label != 'paired-flat')
                         self.assertEqual(output['diagnosticStatusSuppressed'], output_label == 'without-status')
@@ -140,6 +151,12 @@ class BenchmarkTest(unittest.TestCase):
         for content in ['', source * 2]:
             with self.assertRaisesRegex(RuntimeError, 'expected one known'):
                 disable(content)
+
+    def test_css_dedup_requires_one_known_renderer_process_implementation(self):
+        for source in ['', candidate.CSS_DEDUP_ANCHOR * 2]:
+            with self.assertRaisesRegex(RuntimeError, 'expected one pinned CSS'):
+                candidate.css_dedup_renderer(source)
+        self.assertEqual(candidate.css_dedup_renderer(candidate.CSS_DEDUP_ANCHOR), candidate.CSS_DEDUP_REPLACEMENT)
 
     def test_pointer_renderer_rejects_unmatched_or_ambiguous_build_output(self):
         for source in ['', candidate.POINTER_RENDER_ANCHOR * 2]:
