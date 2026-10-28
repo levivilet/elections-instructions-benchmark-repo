@@ -230,7 +230,7 @@ def main():
     parser.add_argument('--perf', required=True)
     parser.add_argument('--bundle', type=Path, required=True)
     parser.add_argument('--revision', required=True)
-    parser.add_argument('--label', choices=['baseline', 'dependency', 'token', 'property', 'flat', 'row', 'paired-candidate', 'paired-row', 'candidate', 'response', 'allocations', 'native', 'cpu', 'without-status', 'without-line-decorations'], default='candidate')
+    parser.add_argument('--label', choices=['baseline', 'dependency', 'token', 'property', 'flat', 'row', 'paired-candidate', 'paired-row', 'candidate', 'response', 'allocations', 'native', 'cpu', 'threads', 'without-status', 'without-line-decorations'], default='candidate')
     parser.add_argument('--virtual-dom-revision')
     parser.add_argument('--pointer-render', action='store_true')
     styles = parser.add_mutually_exclusive_group()
@@ -252,6 +252,7 @@ def main():
     observers.add_argument('--allocation-profile', action='store_true')
     observers.add_argument('--native-profile', action='store_true')
     observers.add_argument('--cpu-profile', action='store_true')
+    observers.add_argument('--thread-profile', action='store_true')
     parser.add_argument('--historical-artifact', action='store_true', help='use the separately pinned original frontend for historical worker controls')
     parser.add_argument('--status-worker-bundle', type=Path)
     parser.add_argument('--status-worker-version')
@@ -266,7 +267,7 @@ def main():
         parser.error('control status worker requires released bundle')
     if args.status_worker_bundle and (not args.status_worker_version or args.disable_status_width_persistence):
         parser.error('released status bundle requires version and cannot combine with cache ablation')
-    if args.control_bundle and (not args.control_revision or args.response or args.allocation_profile or args.native_profile or args.cpu_profile):
+    if args.control_bundle and (not args.control_revision or args.response or args.allocation_profile or args.native_profile or args.cpu_profile or args.thread_profile):
         parser.error('paired counts require a control revision and no observer')
     if (args.pointer_render or args.immediate_render) and not args.renderer_revision:
         parser.error('pointer renderer requires its reviewed source revision')
@@ -360,6 +361,7 @@ def main():
                        'allocationProfiling': args.allocation_profile,
                        'nativeProfiling': args.native_profile,
                        'cpuProfiling': args.cpu_profile,
+                       'threadProfiling': args.thread_profile,
                        'bundleSha256': hashlib.sha256(bundle.read_bytes()).hexdigest(),
                        'sequence': sequence,
                        'note': 'Diagnostic candidate, not the pinned release; excluded from the official report.',
@@ -391,9 +393,10 @@ def main():
                         os.environ['SELECTION_RESPONSE_DESTINATION'] = str(
                             destination.resolve() / f'candidate-response-{repeat}.json')
                         options['capture_type'] = ResponseCapture
-                    elif args.allocation_profile or args.native_profile or args.cpu_profile:
+                    elif args.allocation_profile or args.native_profile or args.cpu_profile or args.thread_profile:
                         os.environ['BENCHMARK_ALLOCATION_PROFILE'] = '1' if args.allocation_profile else '0'
                         os.environ['BENCHMARK_CPU_PROFILE'] = '1' if args.cpu_profile else '0'
+                        os.environ['BENCHMARK_THREAD_PROFILE'] = '1' if args.thread_profile else '0'
                         os.environ['BENCHMARK_JAVASCRIPT_PROFILE'] = '0'
                         os.environ['SELECTION_PROFILE_DESTINATION'] = str(
                             destination.resolve() / f'{args.label}-profile-{repeat}')
@@ -404,7 +407,7 @@ def main():
                     for output_label, output in outputs.items():
                         (destination / f'{output_label}.json').write_text(json.dumps(output, indent=2) + '\n')
                     if (not result['valid'] or not selection_evidence_is_valid(result)
-                            or (not (args.allocation_profile or args.native_profile or args.cpu_profile)
+                            or (not (args.allocation_profile or args.native_profile or args.cpu_profile or args.thread_profile)
                                 and parse_counter(result.get('rawCounter', '')) != result.get('instructions'))):
                         raise RuntimeError(f'invalid candidate trial: {result}')
         finally:

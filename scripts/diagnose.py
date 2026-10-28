@@ -28,13 +28,14 @@ class ProfileCapture(Capture):
         if self.disabled_at is None:
             raise RuntimeError('profile must be disabled before selection starts')
         allocations = os.environ.get('BENCHMARK_ALLOCATION_PROFILE') == '1'
-        if allocations or os.environ.get('BENCHMARK_JAVASCRIPT_PROFILE') == '1' or os.environ.get('BENCHMARK_CPU_PROFILE') == '1':
+        threads_only = os.environ.get('BENCHMARK_THREAD_PROFILE') == '1'
+        if threads_only or allocations or os.environ.get('BENCHMARK_JAVASCRIPT_PROFILE') == '1' or os.environ.get('BENCHMARK_CPU_PROFILE') == '1':
             destination = Path(os.environ['SELECTION_PROFILE_DESTINATION'])
             destination.mkdir(parents=True)
             self.cpu_log = (destination / 'javascript.log').open('w')
             self.cpu_profiler = subprocess.Popen(
                 ['node', str(ROOT / 'scripts/profile-javascript.mjs'), str(destination / 'javascript'),
-                 *(['--allocations'] if allocations else [])],
+                 *(['--allocations'] if allocations else ['--threads'] if threads_only else [])],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.cpu_log, text=True)
             if self.cpu_profiler.stdout.readline().strip() != 'ready':
                 raise RuntimeError('JavaScript profiler failed to attach; see javascript.log')
@@ -61,7 +62,7 @@ class ProfileCapture(Capture):
         # deliberately restricted to diagnostic trials, never official counts.
         if os.environ.get('BENCHMARK_JAVASCRIPT_PROFILE') == '1':
             command = [command[0], '--js-flags=--perf-basic-prof', '--remote-debugging-port=9222', *command[1:]]
-        elif os.environ.get('BENCHMARK_ALLOCATION_PROFILE') == '1' or os.environ.get('BENCHMARK_CPU_PROFILE') == '1':
+        elif os.environ.get('BENCHMARK_ALLOCATION_PROFILE') == '1' or os.environ.get('BENCHMARK_CPU_PROFILE') == '1' or os.environ.get('BENCHMARK_THREAD_PROFILE') == '1':
             command = [command[0], '--remote-debugging-port=9222', *command[1:]]
         return super().launch(command, environment, stdout, stderr, cwd)
 

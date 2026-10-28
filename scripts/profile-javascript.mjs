@@ -5,6 +5,7 @@ import { once } from 'node:events'
 
 const directory = process.argv[2]
 const allocations = process.argv.includes('--allocations')
+const threadsOnly = process.argv.includes('--threads')
 await mkdir(directory, { recursive: true })
 const targets = await fetch('http://127.0.0.1:9222/json/list', { signal: AbortSignal.timeout(15000) }).then((r) => r.json())
 const page = targets.find((target) => target.type === 'page')
@@ -31,6 +32,10 @@ const send = (method, params = {}, sessionId) => new Promise((resolve, reject) =
   socket.send(JSON.stringify({ id, method, params, sessionId }))
 })
 const start = async (sessionId) => {
+  if (threadsOnly) {
+    await send('Runtime.evaluate', { expression: `performance.mark('selection-profile-target:' + globalThis.location.href)` }, sessionId)
+    return
+  }
   if (allocations) {
     await send('HeapProfiler.startSampling', {
       samplingInterval: 32768,
@@ -65,7 +70,7 @@ socket.addEventListener('message', ({ data }) => {
   }
 })
 if (!allocations) {
-  await send('Tracing.start', { categories: 'devtools.timeline,cc,viz,blink.user_timing,disabled-by-default-devtools.timeline.invalidationTracking', transferMode: 'ReportEvents' })
+  await send('Tracing.start', { categories: threadsOnly ? 'blink.user_timing' : 'devtools.timeline,cc,viz,blink.user_timing,disabled-by-default-devtools.timeline.invalidationTracking', transferMode: 'ReportEvents' })
 }
 await start()
 await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true })
@@ -75,7 +80,7 @@ const input = createInterface({ input: process.stdin })
 await once(input, 'line')
 input.close()
 await Promise.all(starts)
-for (const [index, session] of sessions.entries()) {
+for (const [index, session] of (threadsOnly ? [] : sessions).entries()) {
   const { profile } = await send(allocations ? 'HeapProfiler.stopSampling' : 'Profiler.stop', {}, session.sessionId)
   await writeFile(`${directory}/${allocations ? 'heap' : 'cpu'}-${index}-${session.type}.${allocations ? 'json' : 'cpuprofile'}`, JSON.stringify(profile))
 }
